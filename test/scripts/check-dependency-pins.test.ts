@@ -2,7 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { collectDependencyPinViolations } from "../../scripts/check-dependency-pins.mjs";
+import {
+  collectBlockedDependencyViolations,
+  collectDependencyPinViolations,
+} from "../../scripts/check-dependency-pins.mjs";
 import { cleanupTempDirs, makeTempRepoRoot } from "../helpers/temp-repo.js";
 
 const tempDirs: string[] = [];
@@ -188,6 +191,91 @@ packageExtensions:
         section: "packageExtensions.parent@1.0.0.dependencies",
         name: "floating-child",
         spec: "~4.0.0",
+      },
+    ]);
+  });
+
+  it("rejects Mini Shai-Hulud package names in tracked package manifests", () => {
+    const dir = makeRepo();
+    writeJson(path.join(dir, "package.json"), {
+      dependencies: {
+        "@antv/g6": "5.0.49",
+        "echarts-for-react": "3.0.2",
+        safe: "1.2.3",
+      },
+      devDependencies: {
+        "jest-canvas-mock": "2.5.2",
+      },
+    });
+    git(dir, ["add", "package.json"]);
+
+    expect(collectBlockedDependencyViolations(dir)).toEqual([
+      {
+        file: "package.json",
+        section: "dependencies",
+        name: "@antv/g6",
+        spec: "5.0.49",
+        reason: "Mini Shai-Hulud AntV/atool wave, 2026-05-19",
+      },
+      {
+        file: "package.json",
+        section: "dependencies",
+        name: "echarts-for-react",
+        spec: "3.0.2",
+        reason: "Mini Shai-Hulud atool wave, 2026-05-19",
+      },
+      {
+        file: "package.json",
+        section: "devDependencies",
+        name: "jest-canvas-mock",
+        spec: "2.5.2",
+        reason: "Mini Shai-Hulud atool wave, 2026-05-19",
+      },
+    ]);
+  });
+
+  it("rejects known malicious Mini Shai-Hulud versions in lockfiles", () => {
+    const dir = makeRepo();
+    writeJson(path.join(dir, "package.json"), {});
+    writeJson(path.join(dir, "package-lock.json"), {
+      lockfileVersion: 3,
+      packages: {
+        "": {},
+        "node_modules/@mistralai/mistralai": {
+          version: "2.2.2",
+        },
+        "node_modules/@mistralai/mistralai-azure": {
+          version: "1.7.4",
+        },
+      },
+    });
+    writeFileSync(
+      path.join(dir, "pnpm-lock.yaml"),
+      `lockfileVersion: '9.0'
+packages:
+  '@opensearch-project/opensearch@3.8.0':
+    resolution: {integrity: sha512-test}
+  '@mistralai/mistralai@2.2.1':
+    resolution: {integrity: sha512-test}
+`,
+      "utf8",
+    );
+    git(dir, ["add", "package.json", "package-lock.json", "pnpm-lock.yaml"]);
+
+    expect(collectBlockedDependencyViolations(dir)).toEqual([
+      {
+        file: "package-lock.json",
+        section: "lockfile",
+        name: "@mistralai/mistralai",
+        spec: "2.2.2",
+        reason: "known malicious Mini Shai-Hulud package version",
+      },
+      {
+        file: "pnpm-lock.yaml",
+        section: "lockfile",
+        name: "@opensearch-project/opensearch",
+        spec: "3.8.0",
+        reason: "known malicious Mini Shai-Hulud package version",
       },
     ]);
   });
