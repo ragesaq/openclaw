@@ -26,7 +26,7 @@ const BLOCKED_DEPENDENCY_RULES = [
   { pattern: /^jest-date-mock$/u, reason: "Mini Shai-Hulud atool wave, 2026-05-19" },
 ];
 const BLOCKED_PACKAGE_VERSIONS = new Map([
-  ["@mistralai/mistralai", new Set(["2.2.2", "2.2.3"])],
+  ["@mistralai/mistralai", new Set(["2.2.2", "2.2.3", "2.2.4"])],
   ["@mistralai/mistralai-azure", new Set(["1.7.1", "1.7.2", "1.7.3"])],
   ["@mistralai/mistralai-gcp", new Set(["1.7.1", "1.7.2", "1.7.3"])],
   ["@opensearch-project/opensearch", new Set(["3.5.3", "3.6.2", "3.7.0", "3.8.0"])],

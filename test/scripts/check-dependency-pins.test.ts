@@ -242,7 +242,7 @@ packageExtensions:
       packages: {
         "": {},
         "node_modules/@mistralai/mistralai": {
-          version: "2.2.2",
+          version: "2.2.4",
         },
         "node_modules/@mistralai/mistralai-azure": {
           version: "1.7.4",
@@ -267,7 +267,7 @@ packages:
         file: "package-lock.json",
         section: "lockfile",
         name: "@mistralai/mistralai",
-        spec: "2.2.2",
+        spec: "2.2.4",
         reason: "known malicious Mini Shai-Hulud package version",
       },
       {
