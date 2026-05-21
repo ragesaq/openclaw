@@ -51,6 +51,7 @@ export type ProviderEndpointClass =
   | "openai-public"
   | "openai-codex"
   | "opencode-native"
+  | "pioneer-native"
   | "azure-openai"
   | "openrouter"
   | "xai-native"
@@ -147,6 +148,7 @@ const MANIFEST_PROVIDER_ENDPOINT_CLASSES = new Set<ProviderEndpointClass>([
   "openai-public",
   "openai-codex",
   "opencode-native",
+  "pioneer-native",
   "azure-openai",
   "openrouter",
   "xai-native",
@@ -679,6 +681,7 @@ export function resolveProviderRequestCapabilities(
     endpointClass === "openai-public" ||
     endpointClass === "openai-codex" ||
     endpointClass === "opencode-native" ||
+    endpointClass === "pioneer-native" ||
     endpointClass === "azure-openai" ||
     endpointClass === "openrouter" ||
     endpointClass === "xai-native" ||

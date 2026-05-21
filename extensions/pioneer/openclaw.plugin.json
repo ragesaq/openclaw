@@ -1,0 +1,180 @@
+{
+  "id": "pioneer",
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": true,
+  "providers": ["pioneer"],
+  "providerEndpoints": [
+    {
+      "endpointClass": "pioneer-native",
+      "hosts": ["api.pioneer.ai"]
+    }
+  ],
+  "providerRequest": {
+    "providers": {
+      "pioneer": {
+        "family": "pioneer",
+        "openAICompletions": {
+          "supportsStreamingUsage": true
+        }
+      }
+    }
+  },
+  "modelCatalog": {
+    "providers": {
+      "pioneer": {
+        "baseUrl": "https://api.pioneer.ai/v1",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "claude-opus-4-7",
+            "name": "Claude Opus 4.7",
+            "input": ["text"],
+            "contextWindow": 200000,
+            "maxTokens": 32000,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false,
+              "supportsUsageInStreaming": true,
+              "supportsStrictMode": false,
+              "maxTokensField": "max_tokens"
+            }
+          },
+          {
+            "id": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6",
+            "input": ["text"],
+            "contextWindow": 200000,
+            "maxTokens": 32000,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false,
+              "supportsUsageInStreaming": true,
+              "supportsStrictMode": false,
+              "maxTokensField": "max_tokens"
+            }
+          },
+          {
+            "id": "Qwen/Qwen3-8B",
+            "name": "Qwen3 8B",
+            "input": ["text"],
+            "contextWindow": 131000,
+            "maxTokens": 8192,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false,
+              "supportsUsageInStreaming": true,
+              "supportsStrictMode": false,
+              "maxTokensField": "max_tokens"
+            }
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V3.1",
+            "name": "DeepSeek V3.1",
+            "input": ["text"],
+            "contextWindow": 163000,
+            "maxTokens": 8192,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false,
+              "supportsUsageInStreaming": true,
+              "supportsStrictMode": false,
+              "maxTokensField": "max_tokens"
+            }
+          },
+          {
+            "id": "openai/gpt-oss-120b",
+            "name": "GPT-OSS 120B",
+            "input": ["text"],
+            "contextWindow": 131000,
+            "maxTokens": 8192,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false,
+              "supportsUsageInStreaming": true,
+              "supportsStrictMode": false,
+              "maxTokensField": "max_tokens"
+            }
+          },
+          {
+            "id": "openai/gpt-oss-20b",
+            "name": "GPT-OSS 20B",
+            "input": ["text"],
+            "contextWindow": 131000,
+            "maxTokens": 8192,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false,
+              "supportsUsageInStreaming": true,
+              "supportsStrictMode": false,
+              "maxTokensField": "max_tokens"
+            }
+          },
+          {
+            "id": "meta-llama/Llama-3.3-70B-Instruct",
+            "name": "Llama 3.3 70B Instruct",
+            "input": ["text"],
+            "contextWindow": 131000,
+            "maxTokens": 8192,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false,
+              "supportsUsageInStreaming": true,
+              "supportsStrictMode": false,
+              "maxTokensField": "max_tokens"
+            }
+          },
+          {
+            "id": "moonshotai/Kimi-K2.6",
+            "name": "Kimi K2.6",
+            "input": ["text"],
+            "contextWindow": 262000,
+            "maxTokens": 8192,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false,
+              "supportsUsageInStreaming": true,
+              "supportsStrictMode": false,
+              "maxTokensField": "max_tokens"
+            }
+          }
+        ]
+      }
+    },
+    "discovery": {
+      "pioneer": "static"
+    }
+  },
+  "providerAuthEnvVars": {
+    "pioneer": ["PIONEER_API_KEY"]
+  },
+  "providerAuthChoices": [
+    {
+      "provider": "pioneer",
+      "method": "api-key",
+      "choiceId": "pioneer-api-key",
+      "choiceLabel": "Pioneer API key",
+      "groupId": "pioneer",
+      "groupLabel": "Pioneer",
+      "groupHint": "OpenAI-compatible inference",
+      "optionKey": "pioneerApiKey",
+      "cliFlag": "--pioneer-api-key",
+      "cliOption": "--pioneer-api-key <key>",
+      "cliDescription": "Pioneer API key"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

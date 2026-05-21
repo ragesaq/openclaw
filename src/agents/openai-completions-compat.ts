@@ -66,6 +66,7 @@ export function resolveOpenAICompletionsCompatDefaults(
     endpointClass === "deepseek-native" ||
     endpointClass === "mistral-public" ||
     endpointClass === "opencode-native" ||
+    endpointClass === "pioneer-native" ||
     endpointClass === "xai-native" ||
     isXiaomi ||
     isZai ||
@@ -90,7 +91,9 @@ export function resolveOpenAICompletionsCompatDefaults(
     supportsUsageInStreaming:
       supportsOpenAICompletionsStreamingUsageCompat ||
       (!isNonStandard &&
-        (isLocalEndpoint || !usesConfiguredNonOpenAIEndpoint || supportsNativeStreamingUsageCompat)),
+        (isLocalEndpoint ||
+          !usesConfiguredNonOpenAIEndpoint ||
+          supportsNativeStreamingUsageCompat)),
     maxTokensField: usesMaxTokens ? "max_tokens" : "max_completion_tokens",
     thinkingFormat:
       isDeepSeek || isXiaomi
