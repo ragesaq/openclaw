@@ -2168,6 +2168,12 @@ export async function dispatchReplyFromConfig(
       options?.requiresToolSummaryVisibility === true &&
       params.replyOptions?.suppressDefaultToolProgressMessages === true &&
       chatType === "direct";
+    const isDirectPreambleItemProgress = (payload: unknown) =>
+      chatType === "direct" &&
+      payload !== null &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      normalizeOptionalLowercaseString((payload as { kind?: unknown }).kind) === "preamble";
     let hasPendingDirectBlockReplyDelivery = false;
     const waitForPendingDirectBlockReplyDelivery = async (abortSignal?: AbortSignal) => {
       if (!hasPendingDirectBlockReplyDelivery) {
@@ -2181,10 +2187,12 @@ export async function dispatchReplyFromConfig(
     };
     const shouldForwardProgressCallback = (options?: {
       forwardWhenSourceDeliverySuppressed?: boolean;
+      bypassToolSummaryVisibility?: boolean;
       requiresToolSummaryVisibility?: boolean;
     }) => {
       if (
         options?.requiresToolSummaryVisibility === true &&
+        options?.bypassToolSummaryVisibility !== true &&
         !shouldSendToolSummaries() &&
         !shouldAllowQuietDirectNativeProgressCallbacks(options)
       ) {
@@ -2201,6 +2209,7 @@ export async function dispatchReplyFromConfig(
       callback: ((...args: Args) => Promise<void> | void) | undefined,
       options?: {
         forwardWhenSourceDeliverySuppressed?: boolean;
+        bypassToolSummaryVisibility?: (...args: Args) => boolean;
         requiresToolSummaryVisibility?: boolean;
         onForward?: (...args: Args) => void;
         waitForDirectBlockReplyDelivery?: boolean;
@@ -2220,7 +2229,11 @@ export async function dispatchReplyFromConfig(
             return;
           }
         }
-        if (shouldForwardProgressCallback(options)) {
+        const forwardOptions = {
+          ...options,
+          bypassToolSummaryVisibility: options?.bypassToolSummaryVisibility?.(...args) === true,
+        };
+        if (shouldForwardProgressCallback(forwardOptions)) {
           options?.onForward?.(...args);
           await callback?.(...args);
         }
@@ -2260,6 +2273,7 @@ export async function dispatchReplyFromConfig(
             }),
             onItemEvent: wrapProgressCallback(params.replyOptions?.onItemEvent, {
               forwardWhenSourceDeliverySuppressed: true,
+              bypassToolSummaryVisibility: isDirectPreambleItemProgress,
               requiresToolSummaryVisibility: true,
               waitForDirectBlockReplyDelivery: true,
               onForward: (payload) => {

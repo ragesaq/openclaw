@@ -18,6 +18,9 @@ describe("Codex prompt overlay runtime contract", () => {
     expect(contribution?.sectionOverrides?.interaction_style).toContain(
       "Live chat tone: short, natural, human.",
     );
+    expect(contribution?.sectionOverrides?.interaction_style).toContain(
+      "Before using tools or starting multi-step work, send one brief progress note",
+    );
     expect(contribution?.sectionOverrides?.interaction_style).not.toContain(
       "Use heartbeats to create useful proactive progress",
     );

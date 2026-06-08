@@ -1992,6 +1992,53 @@ describe("dispatchReplyFromConfig", () => {
     expect(event.shouldSendToolSummaries).toBe(true);
   });
 
+  it("forwards direct preamble item callbacks while verbose is off", async () => {
+    setNoAbort();
+    sessionStoreMocks.currentEntry = {
+      verboseLevel: "off",
+    };
+    const cfg = emptyConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "webchat",
+      Surface: "webchat",
+      ChatType: "direct",
+      From: "gateway-client",
+      SessionKey: "agent:main:webchat:main",
+    });
+    const onItemEvent = vi.fn();
+
+    const replyResolver = async (
+      _ctx: MsgContext,
+      opts?: GetReplyOptions,
+      _cfg?: OpenClawConfig,
+    ) => {
+      await opts?.onItemEvent?.({ itemId: "tool-1", kind: "tool", progressText: "running exec" });
+      await opts?.onItemEvent?.({
+        itemId: "preamble-1",
+        kind: "preamble",
+        progressText: "Checking the app-server stream.",
+      });
+      return { text: "done" } satisfies ReplyPayload;
+    };
+
+    await dispatchReplyFromConfig({
+      ctx,
+      cfg,
+      dispatcher,
+      replyResolver,
+      replyOptions: { onItemEvent },
+    });
+
+    expect(onItemEvent).toHaveBeenCalledTimes(1);
+    expect(onItemEvent).toHaveBeenCalledWith({
+      itemId: "preamble-1",
+      kind: "preamble",
+      progressText: "Checking the app-server stream.",
+    });
+    expect(dispatcher.sendFinalReply).toHaveBeenCalledTimes(1);
+  });
+
   it("forwards direct native progress callbacks while verbose is off", async () => {
     setNoAbort();
     sessionStoreMocks.currentEntry = {

@@ -411,6 +411,9 @@ describe("codex provider", () => {
     });
     const interactionStyle = contribution?.sectionOverrides?.interaction_style;
     expect(interactionStyle).toContain("Live chat tone: short, natural, human.");
+    expect(interactionStyle).toContain(
+      "Before using tools or starting multi-step work, send one brief progress note",
+    );
     expect(interactionStyle).not.toContain("Use heartbeats to create useful proactive progress");
   });
 
