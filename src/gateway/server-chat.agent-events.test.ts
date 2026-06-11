@@ -3068,11 +3068,20 @@ describe("agent event handler", () => {
       seq: 3,
       stream: "assistant",
       ts: Date.now(),
-      data: { text: "Terminal echo without delta" },
+      data: {
+        delta: "Delta-only assistant stream.",
+      },
     });
     handler({
       runId: "run-hidden-commentary",
       seq: 4,
+      stream: "assistant",
+      ts: Date.now(),
+      data: { text: "Terminal echo without delta" },
+    });
+    handler({
+      runId: "run-hidden-commentary",
+      seq: 5,
       stream: "assistant",
       ts: Date.now(),
       data: { text: "Final answer", delta: "Final answer", phase: "final_answer" },
@@ -3083,15 +3092,21 @@ describe("agent event handler", () => {
     expect(nodeSendToSession).not.toHaveBeenCalled();
 
     const agentCalls = broadcastToConnIds.mock.calls.filter(([event]) => event === "agent");
-    expect(agentCalls).toHaveLength(2);
+    expect(agentCalls).toHaveLength(3);
     expect(agentCalls[0]?.[2]).toEqual(new Set(["conn-selected"]));
     expect(agentCalls[1]?.[2]).toEqual(new Set(["conn-selected"]));
+    expect(agentCalls[2]?.[2]).toEqual(new Set(["conn-selected"]));
     expectPayloadFields(agentCalls[0]?.[1], {
       runId: "run-hidden-commentary",
       sessionKey: "session-hidden",
       stream: "assistant",
     });
     expectPayloadFields(agentCalls[1]?.[1], {
+      runId: "run-hidden-commentary",
+      sessionKey: "session-hidden",
+      stream: "assistant",
+    });
+    expectPayloadFields(agentCalls[2]?.[1], {
       runId: "run-hidden-commentary",
       sessionKey: "session-hidden",
       stream: "assistant",
@@ -3104,6 +3119,9 @@ describe("agent event handler", () => {
     expectPayloadDataFields(agentCalls[1]?.[1], {
       text: "I found the config. Checking tests next.",
       delta: "I found the config. Checking tests next.",
+    });
+    expectPayloadDataFields(agentCalls[2]?.[1], {
+      delta: "Delta-only assistant stream.",
     });
 
     const chatCalls = broadcastToConnIds.mock.calls.filter(([event]) => event === "chat");
