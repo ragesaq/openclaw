@@ -24,6 +24,9 @@ Text is supported everywhere; media and reactions vary by channel.
 - Supported always-on rooms can use [ambient room events](/channels/ambient-room-events)
   so unmentioned room chatter becomes quiet context unless the agent sends with
   the `message` tool.
+- Runtime progress, tool activity, and preamble surfaces follow the
+  [agent event I/O contract](/channels/agent-event-io-contract), so provider
+  quirks are normalized before channel projection.
 
 ## Supported channels
 
