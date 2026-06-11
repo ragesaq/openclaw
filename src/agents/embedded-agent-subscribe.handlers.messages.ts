@@ -575,10 +575,6 @@ export function handleMessageUpdate(
   }
 
   ctx.noteLastAssistant(msg);
-  const suppressVisibleAssistantOutput = shouldSuppressAssistantVisibleOutput(msg);
-  if (suppressVisibleAssistantOutput) {
-    return;
-  }
   const suppressDeterministicApprovalOutput = shouldSuppressDeterministicApprovalOutput(ctx.state);
 
   const assistantEvent = evt.assistantMessageEvent;
@@ -676,6 +672,23 @@ export function handleMessageUpdate(
     ctx.state.lastAssistantStreamItemId = streamItemId;
   }
   if (deliveryPhase === "commentary") {
+    if (chunk) {
+      ctx.state.deltaBuffer += chunk;
+    }
+    if (!ctx.params.silentExpected && !suppressDeterministicApprovalOutput) {
+      const commentaryText =
+        coerceChatContentText(extractAssistantVisibleText(partialAssistant)).trim() ||
+        ctx.state.deltaBuffer.trim();
+      const commentaryDelta = chunk || delta || content;
+      if (commentaryText || commentaryDelta) {
+        const data = buildAssistantStreamData({
+          text: commentaryText || commentaryDelta,
+          delta: commentaryDelta,
+          phase: "commentary",
+        });
+        ctx.emitAssistantStreamData(data);
+      }
+    }
     return;
   }
   if (isPhasePendingOpenAiResponsesTextItem) {

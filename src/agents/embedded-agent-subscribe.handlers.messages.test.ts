@@ -473,6 +473,10 @@ describe("handleMessageUpdate text signatures", () => {
     expect(onAgentEvent.mock.calls.map(([event]) => event)).toMatchObject([
       {
         stream: "assistant",
+        data: { text: "Hello", delta: "Hello", phase: "commentary" },
+      },
+      {
+        stream: "assistant",
         data: { text: "Hello world", delta: "Hello world", phase: "final_answer" },
       },
     ]);
@@ -827,7 +831,7 @@ describe("consumePendingToolMediaReply", () => {
 });
 
 describe("handleMessageUpdate commentary phase", () => {
-  it("suppresses commentary-phase partial delivery and text_end flush", async () => {
+  it("emits commentary-phase agent progress without partial delivery or text_end flush", async () => {
     const onAgentEvent = vi.fn();
     const onPartialReply = vi.fn();
     const flushBlockReplyBuffer = vi.fn();
@@ -848,12 +852,22 @@ describe("handleMessageUpdate commentary phase", () => {
 
     await Promise.resolve();
 
-    expect(onAgentEvent).not.toHaveBeenCalled();
+    expect(onAgentEvent).toHaveBeenCalledTimes(2);
+    expect(onAgentEvent).toHaveBeenNthCalledWith(1, {
+      stream: "assistant",
+      data: {
+        text: "Need send.",
+        delta: "Need send.",
+        replace: undefined,
+        mediaUrls: undefined,
+        phase: "commentary",
+      },
+    });
     expect(onPartialReply).not.toHaveBeenCalled();
     expect(flushBlockReplyBuffer).not.toHaveBeenCalled();
   });
 
-  it("suppresses commentary partials when phase exists only in textSignature metadata", async () => {
+  it("emits commentary progress when phase exists only in textSignature metadata", async () => {
     const onAgentEvent = vi.fn();
     const onPartialReply = vi.fn();
     const flushBlockReplyBuffer = vi.fn();
@@ -887,14 +901,24 @@ describe("handleMessageUpdate commentary phase", () => {
 
     await Promise.resolve();
 
-    expect(onAgentEvent).not.toHaveBeenCalled();
+    expect(onAgentEvent).toHaveBeenCalledTimes(2);
+    expect(onAgentEvent).toHaveBeenNthCalledWith(1, {
+      stream: "assistant",
+      data: {
+        text: "Need send.",
+        delta: "Need send.",
+        replace: undefined,
+        mediaUrls: undefined,
+        phase: "commentary",
+      },
+    });
     expect(onPartialReply).not.toHaveBeenCalled();
     expect(flushBlockReplyBuffer).not.toHaveBeenCalled();
-    expect(ctx.state.deltaBuffer).toBe("");
+    expect(ctx.state.deltaBuffer).toBe("Need send.");
     expect(ctx.state.blockBuffer).toBe("");
   });
 
-  it("suppresses commentary partials even when they contain visible text", () => {
+  it("emits commentary partials as agent progress without blocking final-answer progress", () => {
     const onAgentEvent = vi.fn();
     const ctx = createMessageUpdateContext({
       onAgentEvent,
@@ -915,8 +939,18 @@ describe("handleMessageUpdate commentary phase", () => {
       }),
     );
 
-    expect(onAgentEvent).not.toHaveBeenCalled();
-    expect(ctx.state.deltaBuffer).toBe("");
+    expect(onAgentEvent).toHaveBeenCalledTimes(1);
+    expect(onAgentEvent).toHaveBeenNthCalledWith(1, {
+      stream: "assistant",
+      data: {
+        text: "Working...",
+        delta: "Working...",
+        replace: undefined,
+        mediaUrls: undefined,
+        phase: "commentary",
+      },
+    });
+    expect(ctx.state.deltaBuffer).toBe("Working...");
     expect(ctx.state.blockBuffer).toBe("");
 
     handleMessageUpdate(
@@ -933,8 +967,8 @@ describe("handleMessageUpdate commentary phase", () => {
       }),
     );
 
-    expect(onAgentEvent).toHaveBeenCalledTimes(1);
-    const event = firstMockArg(onAgentEvent, "agent event") as
+    expect(onAgentEvent).toHaveBeenCalledTimes(2);
+    const event = onAgentEvent.mock.calls[1]?.[0] as
       | { stream?: string; data?: { text?: string; delta?: string } }
       | undefined;
     expect(event?.stream).toBe("assistant");
