@@ -22,6 +22,8 @@ Observed durable rows in the ClickClack DB after deploy included:
 
 User-visible screenshots:
 
+- `before-real-user-channel-proof.png`: ragesaq's channel-originated ClickClack turn before this gateway patch. The final assistant answer is visible, but no preamble with commentary/tool progress appears for that long-running turn.
+- `after-real-user-channel-proof.png`: ragesaq's channel-originated ClickClack turn after this gateway patch. The expanded preamble contains assistant commentary interleaved with tool-call rows.
 - `preamble-expanded-commentary-tools.png`: ClickClack shows an expanded live preamble containing commentary interleaved with tool-call rows.
 - `preamble-collapsed-final-visible.png`: ClickClack shows the preamble collapsed while the final assistant answer remains visible.
 
