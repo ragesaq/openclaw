@@ -10,6 +10,7 @@ import { type AgentEventPayload, getAgentRunContext } from "../infra/agent-event
 import { detectErrorKind, type ErrorKind } from "../infra/errors.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
 import { isAcpSessionKey, isSubagentSessionKey } from "../sessions/session-key-utils.js";
+import { resolveAssistantEventPhase } from "../shared/chat-message-content.js";
 import { setSafeTimeout } from "../utils/timer-delay.js";
 import {
   normalizeLiveAssistantEventText,
@@ -132,6 +133,15 @@ function shouldHideHeartbeatChatOutput(runId: string, sourceRunId?: string): boo
 
 function shouldSuppressHeartbeatToolEvents(runId: string, sourceRunId?: string): boolean {
   return Boolean(resolveHeartbeatContext(runId, sourceRunId)?.isHeartbeat);
+}
+
+function shouldMirrorAssistantEventToHiddenSessionMessages(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const record = data as { text?: unknown; delta?: unknown };
+  if (typeof record.text !== "string" || record.text.length === 0) return false;
+  const phase = resolveAssistantEventPhase(data);
+  if (phase === "final_answer") return false;
+  return phase === "commentary" || (typeof record.delta === "string" && record.delta.length > 0);
 }
 
 function normalizeHeartbeatChatFinalText(params: {
@@ -1187,6 +1197,18 @@ export function createAgentEventHandler({
             );
           }
         }
+      } else if (
+        !isAborted &&
+        sessionKey &&
+        hasSessionMessageSubscribers &&
+        evt.stream === "assistant" &&
+        shouldMirrorAssistantEventToHiddenSessionMessages(evt.data)
+      ) {
+        sendAgentPayload(
+          sessionKey,
+          { ...agentPayload, ...buildSessionEventSnapshot(sessionKey, undefined, sessionAgentId) },
+          { agentId: sessionAgentId, controlUiVisible: false, dropIfSlow: true },
+        );
       }
     }
 
