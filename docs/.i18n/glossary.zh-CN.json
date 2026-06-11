@@ -40,6 +40,14 @@
     "target": "频道路由"
   },
   {
+    "source": "Channel routing",
+    "target": "频道路由"
+  },
+  {
+    "source": "Agent event I/O contract",
+    "target": "Agent 事件 I/O 合约"
+  },
+  {
     "source": "ClawHub",
     "target": "ClawHub"
   },

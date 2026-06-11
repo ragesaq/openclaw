@@ -136,13 +136,19 @@ function shouldSuppressHeartbeatToolEvents(runId: string, sourceRunId?: string):
 }
 
 function shouldMirrorAssistantEventToHiddenSessionMessages(data: unknown): boolean {
-  if (!data || typeof data !== "object") return false;
+  if (!data || typeof data !== "object") {
+    return false;
+  }
   const record = data as { text?: unknown; delta?: unknown };
   const hasText = typeof record.text === "string" && record.text.length > 0;
   const hasDelta = typeof record.delta === "string" && record.delta.length > 0;
-  if (!hasText && !hasDelta) return false;
+  if (!hasText && !hasDelta) {
+    return false;
+  }
   const phase = resolveAssistantEventPhase(data);
-  if (phase === "final_answer") return false;
+  if (phase === "final_answer") {
+    return false;
+  }
   return phase === "commentary" || hasDelta;
 }
 
