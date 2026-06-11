@@ -1,0 +1,26 @@
+REAL-CODE BEFORE/AFTER REPRO — PR #92092 (claude-cli narration drop)
+=====================================================================
+Method: bundled the actual src/agents/cli-output.ts from BOTH the PR
+merge-base and the PR head with esbuild (real dependency closure, not a
+hand-mock), then drove the exact Discord-reported shape through each:
+verbose OFF => classifyCommentaryText engaged, no onCommentaryText consumer
+wired, narration emitted before a tool_use block.
+
+Merge-base (BEFORE):  8e81bf774e30e09572407259201a953fca8cfc29
+PR head    (AFTER) :  d1c1a41be8  fix(auto-reply): stop dropping claude-cli
+                                  narration when commentary lane is off
+
+--- BEFORE (unpatched merge-base) ---
+$ node repro.mjs cli-before.mjs
+assistant deltas received: []
+RESULT: narration DROPPED (bug)
+
+--- AFTER (PR head) ---
+$ node repro.mjs cli-after.mjs
+assistant deltas received: ["Let me check the config first."," Now I'll grep for the handler."]
+RESULT: narration preserved (fixed)
+
+Interpretation: on the unpatched fork point the model's interleaved
+narration is silently discarded when the commentary lane has no consumer
+(verbose off) — exactly the reported Discord symptom. The 3-line fix routes
+that pending text back to the assistant lane, so it survives.
