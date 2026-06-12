@@ -156,6 +156,41 @@ describe("ClickClack gateway", () => {
     expect(runError).toBeUndefined();
   });
 
+  it("pages through the full historical backlog before processing events", async () => {
+    const socket = new FakeSocket();
+    mocks.client.websocket.mockReturnValue(socket);
+    const makeEvent = (n: number) => ({
+      id: `evt-${n}`,
+      cursor: `cursor-${String(n).padStart(3, "0")}`,
+      type: "message.created",
+      workspace_id: "workspace-1",
+      channel_id: "chan-1",
+      seq: n,
+      created_at: "2026-01-01T00:00:00.000Z",
+      payload: { message_id: `msg-${n}`, author_id: "human-1" },
+    });
+    // Simulate a server that caps pages: two full pages of history, then tip.
+    mocks.client.events
+      .mockResolvedValueOnce([makeEvent(1), makeEvent(2)])
+      .mockResolvedValueOnce([makeEvent(3), makeEvent(4)])
+      .mockResolvedValue([]);
+    const abort = new AbortController();
+    const ctx = createGatewayContext(abort.signal);
+    const run = startClickClackGatewayAccount(ctx);
+
+    await vi.waitFor(() => expect(mocks.client.websocket).toHaveBeenCalledTimes(1));
+
+    // The init drain must consume every history page without dispatching any
+    // of it, and the websocket must open at the tip cursor, not mid-history.
+    expect(mocks.handleClickClackInbound).not.toHaveBeenCalled();
+    expect(mocks.client.events.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(mocks.client.events).toHaveBeenNthCalledWith(2, "workspace-1", "cursor-002");
+    expect(mocks.client.events).toHaveBeenNthCalledWith(3, "workspace-1", "cursor-004");
+    expect(mocks.client.websocket).toHaveBeenCalledWith("workspace-1", "cursor-004");
+    abort.abort();
+    await run;
+  });
+
   it("drops messages denied by ClickClack sender access before inbound handling", async () => {
     const socket = new FakeSocket();
     mocks.client.websocket.mockReturnValue(socket);
