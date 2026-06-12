@@ -150,9 +150,16 @@ export async function startClickClackGatewayAccount(
     const backlog = await client.events(workspaceId, afterCursor);
     if (!initialized) {
       // First pass establishes the cursor without replaying historical backlog
-      // into fresh gateway sessions.
-      for (const event of backlog) {
-        afterCursor = event.cursor || afterCursor;
+      // into fresh gateway sessions. The server caps each page (default 200,
+      // oldest-first), so keep paging until the backlog is exhausted; stopping
+      // after one page strands the cursor mid-history and the websocket backlog
+      // then replays old user messages as live turns on every restart.
+      let page = backlog;
+      while (page.length > 0 && !ctx.abortSignal.aborted) {
+        for (const event of page) {
+          afterCursor = event.cursor || afterCursor;
+        }
+        page = await client.events(workspaceId, afterCursor);
       }
       initialized = true;
     } else {
