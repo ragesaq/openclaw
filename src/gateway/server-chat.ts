@@ -145,11 +145,7 @@ function shouldMirrorAssistantEventToHiddenSessionMessages(data: unknown): boole
   if (!hasText && !hasDelta) {
     return false;
   }
-  const phase = resolveAssistantEventPhase(data);
-  if (phase === "final_answer") {
-    return false;
-  }
-  return phase === "commentary" || hasDelta;
+  return resolveAssistantEventPhase(data) === "commentary";
 }
 
 function normalizeHeartbeatChatFinalText(params: {

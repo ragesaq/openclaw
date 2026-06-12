@@ -3022,7 +3022,7 @@ describe("agent event handler", () => {
     );
   });
 
-  it("mirrors non-control-UI-visible assistant commentary only to exact session message subscribers", () => {
+  it("mirrors commentary-phase assistant events only to exact session message subscribers", () => {
     const {
       broadcast,
       broadcastToConnIds,
@@ -3059,8 +3059,8 @@ describe("agent event handler", () => {
       stream: "assistant",
       ts: Date.now(),
       data: {
-        text: "I found the config. Checking tests next.",
-        delta: "I found the config. Checking tests next.",
+        text: "Untagged text frame must not mirror.",
+        delta: "Untagged text frame must not mirror.",
       },
     });
     handler({
@@ -3069,7 +3069,7 @@ describe("agent event handler", () => {
       stream: "assistant",
       ts: Date.now(),
       data: {
-        delta: "Delta-only assistant stream.",
+        delta: "Untagged delta-only stream must not mirror.",
       },
     });
     handler({
@@ -3086,16 +3086,25 @@ describe("agent event handler", () => {
       ts: Date.now(),
       data: { text: "Final answer", delta: "Final answer", phase: "final_answer" },
     });
+    handler({
+      runId: "run-hidden-commentary",
+      seq: 6,
+      stream: "assistant",
+      ts: Date.now(),
+      data: {
+        delta: "Streaming commentary delta.",
+        phase: "commentary",
+      },
+    });
 
     expect(chatBroadcastCalls(broadcast)).toHaveLength(0);
     expect(agentBroadcastCalls(broadcast)).toHaveLength(0);
     expect(nodeSendToSession).not.toHaveBeenCalled();
 
     const agentCalls = broadcastToConnIds.mock.calls.filter(([event]) => event === "agent");
-    expect(agentCalls).toHaveLength(3);
+    expect(agentCalls).toHaveLength(2);
     expect(agentCalls[0]?.[2]).toEqual(new Set(["conn-selected"]));
     expect(agentCalls[1]?.[2]).toEqual(new Set(["conn-selected"]));
-    expect(agentCalls[2]?.[2]).toEqual(new Set(["conn-selected"]));
     expectPayloadFields(agentCalls[0]?.[1], {
       runId: "run-hidden-commentary",
       sessionKey: "session-hidden",
@@ -3106,22 +3115,14 @@ describe("agent event handler", () => {
       sessionKey: "session-hidden",
       stream: "assistant",
     });
-    expectPayloadFields(agentCalls[2]?.[1], {
-      runId: "run-hidden-commentary",
-      sessionKey: "session-hidden",
-      stream: "assistant",
-    });
     expectPayloadDataFields(agentCalls[0]?.[1], {
       text: "I will inspect the files first.",
       delta: "I will inspect the files first.",
       phase: "commentary",
     });
     expectPayloadDataFields(agentCalls[1]?.[1], {
-      text: "I found the config. Checking tests next.",
-      delta: "I found the config. Checking tests next.",
-    });
-    expectPayloadDataFields(agentCalls[2]?.[1], {
-      delta: "Delta-only assistant stream.",
+      delta: "Streaming commentary delta.",
+      phase: "commentary",
     });
 
     const chatCalls = broadcastToConnIds.mock.calls.filter(([event]) => event === "chat");
