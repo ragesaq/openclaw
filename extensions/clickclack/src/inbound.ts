@@ -4,6 +4,8 @@
  */
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { resolveClickClackInboundAccess, type ClickClackInboundAccess } from "./access.js";
+import { createClickClackActivityPublisher } from "./activity.js";
+import { createClickClackClient } from "./http-client.js";
 import { sendClickClackText } from "./outbound.js";
 import { getClickClackRuntime } from "./runtime.js";
 import { buildClickClackTarget } from "./target.js";
@@ -173,49 +175,95 @@ export async function handleClickClackInbound(params: {
     OriginatingTo: target,
     CommandAuthorized: access.commandAuthorized,
   });
-  await runtime.channel.inbound.dispatchReply({
-    cfg: params.config as OpenClawConfig,
-    channel: CHANNEL_ID,
-    accountId: params.account.accountId,
-    agentId: route.agentId,
-    routeSessionKey: route.sessionKey,
-    storePath,
-    ctxPayload,
-    recordInboundSession: runtime.channel.session.recordInboundSession,
-    dispatchReplyWithBufferedBlockDispatcher:
-      runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
-    toolsAllow: params.account.toolsAllow,
-    delivery: {
-      deliver: async (payload) => {
-        const text =
-          payload && typeof payload === "object" && "text" in payload
-            ? ((payload as { text?: string }).text ?? "")
-            : "";
-        if (!text.trim()) {
-          return;
-        }
-        await sendClickClackText({
-          cfg: params.config,
-          accountId: params.account.accountId,
-          to: target,
-          text,
-          threadId: message.parent_message_id ? message.thread_root_id : undefined,
-          replyToId: message.id,
-        });
-      },
-      onError: (error) => {
-        throw error instanceof Error
-          ? error
-          : new Error(`clickclack dispatch failed: ${String(error)}`);
-      },
+  const activity = createClickClackActivityPublisher({
+    client: createClickClackClient({
+      baseUrl: params.account.baseUrl,
+      token: params.account.token,
+    }),
+    target: {
+      channelId: message.channel_id,
+      directConversationId: message.direct_conversation_id,
     },
-    replyPipeline: {},
-    record: {
-      onRecordError: (error) => {
-        throw error instanceof Error
-          ? error
-          : new Error(`clickclack session record failed: ${String(error)}`);
-      },
-    },
+    turnId: message.id,
   });
+  let isVerboseProgressActive = () => false;
+  try {
+    await runtime.channel.inbound.dispatchReply({
+      cfg: params.config as OpenClawConfig,
+      channel: CHANNEL_ID,
+      accountId: params.account.accountId,
+      agentId: route.agentId,
+      routeSessionKey: route.sessionKey,
+      storePath,
+      ctxPayload,
+      recordInboundSession: runtime.channel.session.recordInboundSession,
+      dispatchReplyWithBufferedBlockDispatcher:
+        runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
+      toolsAllow: params.account.toolsAllow,
+      delivery: {
+        deliver: async (payload) => {
+          const text =
+            payload && typeof payload === "object" && "text" in payload
+              ? ((payload as { text?: string }).text ?? "")
+              : "";
+          if (!text.trim()) {
+            return;
+          }
+          await sendClickClackText({
+            cfg: params.config,
+            accountId: params.account.accountId,
+            to: target,
+            text,
+            threadId: message.parent_message_id ? message.thread_root_id : undefined,
+            replyToId: message.id,
+          });
+        },
+        onError: (error) => {
+          throw error instanceof Error
+            ? error
+            : new Error(`clickclack dispatch failed: ${String(error)}`);
+        },
+      },
+      replyOptions: {
+        runId: `clickclack:${message.id}`,
+        suppressDefaultToolProgressMessages: true,
+        allowProgressCallbacksWhenSourceDeliverySuppressed: true,
+        commentaryProgressEnabled: true,
+        onVerboseProgressVisibility: (isActive) => {
+          isVerboseProgressActive = isActive;
+        },
+        onToolStart: async (payload) => {
+          await activity.pushTool(payload);
+        },
+        onItemEvent: async (payload) => {
+          if (payload.kind === "preamble" && isVerboseProgressActive()) {
+            return;
+          }
+          await activity.pushItem(payload);
+        },
+        onPlanUpdate: async (payload) => {
+          await activity.pushPlanUpdate(payload);
+        },
+        onApprovalEvent: async (payload) => {
+          await activity.pushApproval(payload);
+        },
+        onCommandOutput: async (payload) => {
+          await activity.pushCommandOutput(payload);
+        },
+        onPatchSummary: async (payload) => {
+          await activity.pushPatchSummary(payload);
+        },
+      },
+      replyPipeline: {},
+      record: {
+        onRecordError: (error) => {
+          throw error instanceof Error
+            ? error
+            : new Error(`clickclack session record failed: ${String(error)}`);
+        },
+      },
+    });
+  } finally {
+    await activity.flushAll();
+  }
 }

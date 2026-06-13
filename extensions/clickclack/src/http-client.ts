@@ -17,6 +17,21 @@ type ClientOptions = {
   fetch?: typeof fetch;
 };
 
+export type ClickClackMessageKind = "message" | "agent_commentary" | "agent_tool";
+
+export type ClickClackMessageCreateInput = {
+  body: string;
+  kind?: ClickClackMessageKind;
+  turn_id?: string;
+  quoted_message_id?: string;
+  nonce?: string;
+  topic_id?: string;
+};
+
+function normalizeMessageCreateInput(input: string | ClickClackMessageCreateInput) {
+  return typeof input === "string" ? { body: input } : input;
+}
+
 /**
  * Creates a typed client for the ClickClack API using bearer-token auth.
  */
@@ -84,10 +99,13 @@ export function createClickClackClient(options: ClientOptions) {
       await request<{ root: ClickClackMessage; replies: ClickClackMessage[] }>(
         `/api/messages/${encodeURIComponent(messageId)}/thread`,
       ),
-    createChannelMessage: async (channelId: string, body: string): Promise<ClickClackMessage> => {
+    createChannelMessage: async (
+      channelId: string,
+      input: string | ClickClackMessageCreateInput,
+    ): Promise<ClickClackMessage> => {
       const data = await request<{ message: ClickClackMessage }>(
         `/api/channels/${encodeURIComponent(channelId)}/messages`,
-        { method: "POST", body: JSON.stringify({ body }) },
+        { method: "POST", body: JSON.stringify(normalizeMessageCreateInput(input)) },
       );
       return data.message;
     },
@@ -110,11 +128,18 @@ export function createClickClackClient(options: ClientOptions) {
     },
     createDirectMessage: async (
       conversationId: string,
-      body: string,
+      input: string | ClickClackMessageCreateInput,
     ): Promise<ClickClackMessage> => {
       const data = await request<{ message: ClickClackMessage }>(
         `/api/dms/${encodeURIComponent(conversationId)}/messages`,
-        { method: "POST", body: JSON.stringify({ body }) },
+        { method: "POST", body: JSON.stringify(normalizeMessageCreateInput(input)) },
+      );
+      return data.message;
+    },
+    updateMessage: async (messageId: string, body: string): Promise<ClickClackMessage> => {
+      const data = await request<{ message: ClickClackMessage }>(
+        `/api/messages/${encodeURIComponent(messageId)}`,
+        { method: "PATCH", body: JSON.stringify({ body }) },
       );
       return data.message;
     },

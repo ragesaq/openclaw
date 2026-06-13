@@ -1,12 +1,22 @@
 // Clickclack tests cover inbound plugin behavior.
 import { createPluginRuntimeMock } from "openclaw/plugin-sdk/channel-test-helpers";
 import type { PluginRuntime } from "openclaw/plugin-sdk/core";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleClickClackInbound } from "./inbound.js";
 import { setClickClackRuntime } from "./runtime.js";
 import type { ClickClackMessage, CoreConfig, ResolvedClickClackAccount } from "./types.js";
 
 const sendClickClackTextMock = vi.hoisted(() => vi.fn());
+const activityPublisherMock = vi.hoisted(() => ({
+  pushApproval: vi.fn(async () => undefined),
+  pushCommandOutput: vi.fn(async () => undefined),
+  pushItem: vi.fn(async () => undefined),
+  pushPatchSummary: vi.fn(async () => undefined),
+  pushPlanUpdate: vi.fn(async () => undefined),
+  pushTool: vi.fn(async () => undefined),
+  flushAll: vi.fn(async () => undefined),
+}));
+const createClickClackActivityPublisherMock = vi.hoisted(() => vi.fn(() => activityPublisherMock));
 
 type LlmCompleteMock = ReturnType<
   typeof vi.fn<
@@ -22,6 +32,10 @@ type LlmCompleteMock = ReturnType<
 
 vi.mock("./outbound.js", () => ({
   sendClickClackText: sendClickClackTextMock,
+}));
+
+vi.mock("./activity.js", () => ({
+  createClickClackActivityPublisher: createClickClackActivityPublisherMock,
 }));
 
 function createRuntime(): PluginRuntime {
@@ -126,8 +140,19 @@ function createMessage(overrides: Partial<ClickClackMessage> = {}): ClickClackMe
 }
 
 describe("handleClickClackInbound", () => {
-  it("runs model-mode bot accounts without tools and posts the bot reply", async () => {
+  beforeEach(() => {
     sendClickClackTextMock.mockReset();
+    createClickClackActivityPublisherMock.mockClear();
+    activityPublisherMock.pushApproval.mockClear();
+    activityPublisherMock.pushCommandOutput.mockClear();
+    activityPublisherMock.pushItem.mockClear();
+    activityPublisherMock.pushPatchSummary.mockClear();
+    activityPublisherMock.pushPlanUpdate.mockClear();
+    activityPublisherMock.pushTool.mockClear();
+    activityPublisherMock.flushAll.mockClear();
+  });
+
+  it("runs model-mode bot accounts without tools and posts the bot reply", async () => {
     const runtime = createRuntime();
     setClickClackRuntime(runtime);
     const cfg = {
@@ -178,6 +203,7 @@ describe("handleClickClackInbound", () => {
     });
 
     expect(runtime.channel.inbound.dispatchReply).not.toHaveBeenCalled();
+    expect(createClickClackActivityPublisherMock).not.toHaveBeenCalled();
     expect(runtime.agent.runEmbeddedAgent).not.toHaveBeenCalled();
     const completionRequest = (runtime.llm.complete as LlmCompleteMock).mock.calls[0]?.[0];
     expect(completionRequest?.agentId).toBe("service-bot");
@@ -249,6 +275,109 @@ describe("handleClickClackInbound", () => {
         })
       | undefined;
     expect(dispatchParams?.toolsAllow).toEqual(["message"]);
+  });
+
+  it("passes agent progress callbacks that publish durable ClickClack activity rows", async () => {
+    const runtime = createRuntime();
+    const dispatchReply = vi.mocked(runtime.channel.inbound.dispatchReply);
+    let replyOptions: Record<string, unknown> | undefined;
+    dispatchReply.mockImplementationOnce(async (params) => {
+      replyOptions = (params as { replyOptions?: Record<string, unknown> }).replyOptions;
+      const options = replyOptions as {
+        onToolStart?: (payload: {
+          name?: string;
+          phase?: string;
+          toolCallId?: string;
+        }) => Promise<void>;
+        onItemEvent?: (payload: {
+          kind?: string;
+          progressText?: string;
+          itemId?: string;
+          name?: string;
+        }) => Promise<void>;
+        onCommandOutput?: (payload: {
+          name?: string;
+          phase?: string;
+          output?: string;
+          toolCallId?: string;
+        }) => Promise<void>;
+        onVerboseProgressVisibility?: (isActive: () => boolean) => void;
+      };
+      await options.onToolStart?.({ name: "exec", phase: "start", toolCallId: "tool_1" });
+      await options.onItemEvent?.({
+        kind: "preamble",
+        progressText: "checking the channel stream",
+        itemId: "pre_1",
+      });
+      options.onVerboseProgressVisibility?.(() => true);
+      await options.onItemEvent?.({
+        kind: "preamble",
+        progressText: "duplicate verbose progress",
+        itemId: "pre_2",
+      });
+      await options.onItemEvent?.({
+        kind: "tool",
+        progressText: "exec running",
+        itemId: "tool_1",
+        name: "exec",
+      });
+      await options.onCommandOutput?.({
+        name: "exec",
+        phase: "end",
+        output: "done",
+        toolCallId: "tool_1",
+      });
+    });
+    setClickClackRuntime(runtime);
+    const cfg = {
+      agents: {
+        defaults: {
+          model: "openai/gpt-5.4-mini",
+        },
+      },
+    } satisfies CoreConfig;
+
+    await handleClickClackInbound({
+      account: createAgentAccount(),
+      config: cfg,
+      message: createMessage(),
+    });
+
+    expect(createClickClackActivityPublisherMock).toHaveBeenCalledTimes(1);
+    expect(createClickClackActivityPublisherMock.mock.calls[0]?.[0]).toMatchObject({
+      target: { channelId: "chn_1", directConversationId: undefined },
+      turnId: "msg_1",
+    });
+    expect(replyOptions).toMatchObject({
+      runId: "clickclack:msg_1",
+      suppressDefaultToolProgressMessages: true,
+      allowProgressCallbacksWhenSourceDeliverySuppressed: true,
+      commentaryProgressEnabled: true,
+    });
+    expect(activityPublisherMock.pushTool).toHaveBeenCalledWith({
+      name: "exec",
+      phase: "start",
+      toolCallId: "tool_1",
+    });
+    expect(activityPublisherMock.pushItem).toHaveBeenCalledTimes(2);
+    expect(activityPublisherMock.pushItem).toHaveBeenCalledWith({
+      kind: "preamble",
+      progressText: "checking the channel stream",
+      itemId: "pre_1",
+    });
+    expect(activityPublisherMock.pushItem).toHaveBeenCalledWith({
+      kind: "tool",
+      progressText: "exec running",
+      itemId: "tool_1",
+      name: "exec",
+    });
+    expect(activityPublisherMock.pushCommandOutput).toHaveBeenCalledWith({
+      name: "exec",
+      phase: "end",
+      output: "done",
+      toolCallId: "tool_1",
+    });
+    expect(activityPublisherMock.flushAll).toHaveBeenCalledTimes(1);
   });
 
   it("accepts ClickClack DM target syntax in allowFrom", async () => {
