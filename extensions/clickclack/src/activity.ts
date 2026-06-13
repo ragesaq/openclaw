@@ -116,6 +116,12 @@ export function createClickClackActivityPublisher(params: {
   onError?: (error: unknown) => void;
 }) {
   const rows = new Map<string, ActivityRow>();
+  const commentaryBodies = new Map<string, string>();
+  const commentaryKeyBodies = new Map<string, string>();
+
+  function commentaryBodyKey(body: string): string {
+    return body.replace(/\s+/g, " ").trim();
+  }
 
   async function write(kind: "agent_commentary" | "agent_tool", key: string, body: string) {
     const trimmed = body.trim();
@@ -152,7 +158,25 @@ export function createClickClackActivityPublisher(params: {
   }
 
   const pushCommentary = async (text: string | undefined | null, itemId?: string | null) => {
-    await write("agent_commentary", activityKey("commentary", itemId), text ?? "");
+    const baseKey = activityKey("commentary", itemId);
+    const trimmed = text?.trim() ?? "";
+    if (!trimmed) {
+      await write("agent_commentary", baseKey, "");
+      return;
+    }
+
+    // Codex app-server surfaces the same commentary as both event_msg and
+    // response_item. Those carry different item ids, so dedupe by body too.
+    const bodyKey = commentaryBodyKey(trimmed);
+    const key = commentaryBodies.get(bodyKey) ?? baseKey;
+    const previousBodyKey = commentaryKeyBodies.get(key);
+    if (previousBodyKey && previousBodyKey !== bodyKey) {
+      commentaryBodies.delete(previousBodyKey);
+    }
+    commentaryBodies.set(bodyKey, key);
+    commentaryKeyBodies.set(key, bodyKey);
+
+    await write("agent_commentary", key, trimmed);
   };
 
   const pushItem = async (payload: ItemPayload) => {

@@ -64,6 +64,27 @@ describe("createClickClackActivityPublisher", () => {
     );
   });
 
+  it("dedupes identical commentary snapshots across different item ids", async () => {
+    const client = createClient();
+    const publisher = createClickClackActivityPublisher({
+      client,
+      target: { channelId: "chn_1" },
+      turnId: "msg_user_1",
+    });
+
+    await publisher.pushCommentary("checking the files", "event_msg_1");
+    await publisher.pushCommentary("checking the files", "response_item_1");
+    await publisher.flushAll();
+
+    expect(client.createChannelMessage).toHaveBeenCalledTimes(1);
+    expect(client.createChannelMessage).toHaveBeenCalledWith("chn_1", {
+      body: "checking the files",
+      kind: "agent_commentary",
+      turn_id: "msg_user_1",
+    });
+    expect(client.updateMessage).not.toHaveBeenCalled();
+  });
+
   it("writes tool activity as agent_tool rows", async () => {
     const client = createClient();
     const publisher = createClickClackActivityPublisher({
