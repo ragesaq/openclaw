@@ -27,6 +27,14 @@ User-visible screenshots:
 - `preamble-expanded-commentary-tools.png`: ClickClack shows an expanded live preamble containing commentary interleaved with tool-call rows.
 - `preamble-collapsed-final-visible.png`: ClickClack shows the preamble collapsed while the final assistant answer remains visible.
 
+## After (animated)
+
+![Progress surface building live in a hidden channel run](./after-progress-surface-building-animated.gif)
+
+`after-progress-surface-building-animated.gif`: a live capture of the progress surface populating mid-turn on a channel-typed (hidden) run. Commentary prose, tool-call rows, and the status chip build down the channel in real time as the turn executes, exactly the behavior the gateway patch restores for session-message subscribers. Captured at ~7.7 fps and encoded to a looping GIF (760x489).
+
+Caveat: this clip is a real hidden-channel turn captured live, but it is the surface populating during another agent's in-flight turn observed in the same browser, not a single scripted prompt. It demonstrates the mirrored commentary/tool progress rendering live; it is not a controlled before/after pair. The controlled main-vs-patched pair is captured separately via the still PNGs above.
+
 ## Limitations
 
 This proof is from a production-like local ClickClack bridge deployment rather than an upstream-maintainer-hosted environment. It exercises the affected hidden/channel session routing path that was broken.
