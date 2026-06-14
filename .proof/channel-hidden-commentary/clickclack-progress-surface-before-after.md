@@ -4,10 +4,10 @@ Canonical before/after for the channel-hidden-commentary work, recorded on **cli
 
 ## What this proves
 
-Stock ClickClack only renders final messages. While an agent works a turn, the channel is blank — no visibility into the tool steps or commentary happening server-side. The progress producer surfaces that in-flight activity as a live **PREAMBLE** panel in the channel, then the final reply lands as normal.
+Stock ClickClack shows you the agent's final message and nothing else. While an agent works a turn, the channel gives no view of the tool steps or commentary happening server-side. The progress producer captures that in-flight activity as a durable **PREAMBLE** panel attached to the agent message — one row per step — that a reader can expand to see exactly what the agent did.
 
-- **Before:** agent is working, channel shows nothing but the user's message.
-- **After:** a live preamble panel builds up the agent's tool steps in real time, then the full reply appears.
+- **Before:** agent is working, the channel shows only the user's message; the reply lands with no record of the work behind it.
+- **After:** the agent message carries a `PREAMBLE` panel; expand it and every `exec` step the agent ran is listed in order, followed by the final reply.
 
 ## Controlled setup (one variable)
 
@@ -15,56 +15,69 @@ A second, isolated stock install was stood up specifically as the source lab, so
 
 - **Instance:** `clickclack-stock` on `127.0.0.1:8101`, own data dir, byte-identical binary, isolated SQLite.
 - **Channel:** native OpenClaw `clickclack` channel, `src` account → `:8101` (additive; the `:8100` default account is untouched).
-- **The only variable between the two runs is the progress producer bridge:** off for _before_, on for _after_. Same instance, same channel, same prompt.
+- **The only variable between the two runs is the progress producer bridge:** off for _before_, on for _after_. Same instance, same channel, same prompt shape.
 
-Prompt used for both runs:
+Prompt used (read-only, tool-heavy so the surface has several steps to show):
 
-> Read-only tour of this clickclack-stock install, narrate each step as you go: (1) list the top-level files in the clickclack-stock-src directory, (2) print the binary --version, (3) report the size of data/clickclack.db. Then summarize in 4 bullets what this install is. Read-only only, no writes.
+> Fresh read-only check: run each as its own separate exec step so I can watch progress build, then post a 4-bullet summary of the results: (1) `ls -la` the clickclack-stock-src dir, (2) the stock binary `--version`, (3) `du -h` the data DB, (4) `tail -5` of serve.log.
+
+## Capture method
+
+- **Resolution:** the channel is rendered at a desktop viewport (1280×860 logical) at 2× device-scale, so the UI fills properly and text is crisp (the earlier pass was a cramped mobile viewport).
+- **Timing by database:** the capture watches the `:8101` SQLite store and keeps recording until the agent's reply row actually lands, then holds a couple of seconds past it — so the response is always in frame, never cut off.
+- **Render note:** stock ClickClack does not push these agent rows to an already-open tab over its websocket; they are durable and render on the next channel load/refetch. The capture issues one refetch the moment the reply lands so the rendered reply and preamble are captured faithfully.
 
 ## Before — stock ClickClack, no progress producer
 
-The message is sent and the channel just sits. No preamble, no tool rows, no indication the agent is even working.
+The message is sent and the channel just sits. No preamble, no tool rows, then the reply appears with no record of the work behind it.
 
-![Before: blank channel while the agent works, no progress surface](clickclack-before-blank-no-progress.gif)
+![Before: blank channel while the agent works, then a bare reply with no progress surface](clickclack-before-blank-no-progress.gif)
 
 ## After — progress producer on
 
-The same prompt. A `PREAMBLE` panel appears, marked **LIVE**, and accumulates the agent's tool steps in real time (each `exec` surfaced as a row) before the final 4-bullet reply lands.
+Same prompt. The agent message now carries a `PREAMBLE` panel. Expanded, it lists every step the agent ran (each `exec` as its own row) ahead of the final 4-bullet reply.
 
-![After: live PREAMBLE panel building the agent's tool steps, then the reply](clickclack-after-preamble-building.gif)
+![After: agent message with a PREAMBLE panel that expands to the agent's tool steps, then the reply](clickclack-after-preamble-building.gif)
 
-Frame-sampled arc of the same run (empty → preamble builds → reply):
+Frame-sampled arc of the same run (empty → prompt → reply renders → preamble expands to reveal the tool steps):
 
-![After contact sheet: empty, preamble building with growing tool rows, final reply](clickclack-after-contactsheet.png)
+![After contact sheet: empty, working, reload renders the reply, preamble expands to tool steps](clickclack-after-contactsheet.png)
+
+The expanded progress surface in full — the durable record of the turn:
+
+![Expanded PREAMBLE: four exec rows plus the send, above the reply](clickclack-after-expanded-preamble.png)
 
 ## The actual after transcript
 
-What the channel rendered, in order (durable rows, real turn):
+What the channel rendered, in order (durable rows, real turn `#033742`):
 
-1. **user** — the read-only tour prompt
-2. **agent_tool** — `exec` · `cd .../clickclack-stock-src && ls -la`
-3. **agent_tool** — `exec` · `./clickclack-stock-bin --version 2>&1 | head -20`
-4. **agent_tool** — `exec` · `ls -la data/ && du -h data/clickclack.db && stat -c '%s bytes' ...`
-5. **agent_tool** — `exec` · inspect `serve.log` (first/last lines)
-6. **message** — final reply:
+1. **user** — the read-only check prompt
+2. **agent_tool** — `exec` · `ls -la /home/lumadmin/.openclaw/clickclack-stock-src`
+3. **agent_tool** — `exec` · `/home/lumadmin/.openclaw/clickclack-stock-src/clickclack-stock-bin --version`
+4. **agent_tool** — `exec` · `du -h /home/lumadmin/.openclaw/clickclack-stock-src/data/clickclack.db`
+5. **agent_tool** — `exec` · `tail -5 /home/lumadmin/.openclaw/clickclack-stock-src/serve.log`
+6. **agent_tool** — `message` · the `send` of the final reply
+7. **message** — final reply:
 
-> Read-only tour done. Results:
+> Read-only tour done (run #033742):
 >
-> 1. Top-level files in clickclack-stock-src: clickclack-stock-bin (27MB executable), data/ (directory), serve.log (~28KB)
-> 2. Binary --version: no version flag exists. `./clickclack-stock-bin --version` errors with "flag provided but not defined: -version" and dumps usage. It's a Go CLI with flags like -channel, -server, -token, -json, -plain.
-> 3. data/clickclack.db size: 4096 bytes (4.0K). The real data lives in the WAL sidecar (clickclack.db-wal is 2.36MB, not yet checkpointed) plus a 32KB -shm file.
+> 1. Dir contents: clickclack-stock-bin (~27MB executable), data/ dir, serve.log (~83KB). Owner lumadmin, modified Jun 14.
+> 2. --version: not supported. The binary is a Go-flag CLI (clickclack client) with flags like -channel/-server/-token/-json; no version flag defined, exited code 2.
+> 3. data/clickclack.db = 556K.
+> 4. serve.log tail: live HTTP traffic at 03:38, POST/GET on /api/channels/chn_01kv1wqhjt.../messages against 127.0.0.1:8101, all 200/201.
 >
-> What this install is, in 4 bullets:
+> Summary, what this install is:
 >
-> - A self-contained ClickClack stock build: one Go binary plus a data/ dir (SQLite db, logs/, uploads/).
-> - It's a chat server + CLI. serve.log shows a live HTTP server on localhost:8101 serving /api/channels, /api/messages, /api/realtime/events.
-> - SQLite in WAL mode (db file tiny, data in the -wal sidecar), so it's actively running.
-> - It's backing this very conversation; no writes made, read-only throughout.
+> - A ClickClack stock build: a single self-contained Go binary acting as the CLI client, defaulting to a localhost ClickClack server.
+> - Backed by a small SQLite-style store (data/clickclack.db, 556K), so it's a low-volume/fresh install.
+> - Actively serving on 127.0.0.1:8101, handling channel message POST/GET traffic, including this very channel.
+> - Healthy and live as of 03:38 UTC: all recent requests returned 200/201 in single-digit milliseconds. Read-only, no writes made.
 
 ## Honesty notes
 
 - **Surface:** clickclack-stock (`:8101`), OpenClaw native `clickclack` channel. Not clickglass.
-- **Single variable:** before vs after differ only by the progress producer being off vs on. Same instance, channel, and prompt.
+- **Single variable:** before vs after differ only by the progress producer being off vs on. Same instance, channel, and prompt shape.
 - **What the preamble shows here:** the agent emitted tool steps (`agent_tool` rows) for this turn; the producer also classifies non-tool progress (thinking/commentary/lifecycle) as `agent_commentary` rows when the model emits them. This run was tool-heavy, so the visible preamble is tool rows.
+- **Rendering is durable, not live-streamed:** in stock ClickClack these rows persist and render on channel load; they are not pushed live to an open tab. That live-streaming layer is the next increment on top of this durable surface.
 - **Model:** the source channel session was pinned to a healthy primary for the capture; the progress behavior is model-agnostic.
-- **Recordings:** zero-dependency CDP screenshot capture pinned to a dedicated tab, encoded to GIF. GIFs are cropped to the message region and kept small for inline rendering.
+- **Recordings:** zero-dependency CDP screenshot capture pinned to a dedicated tab at 2× desktop resolution, stopped by watching the database for the reply, encoded to GIF and kept small for inline rendering.
