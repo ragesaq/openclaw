@@ -1,5 +1,7 @@
 # Hidden channel assistant commentary proof
 
+> **Canonical before/after now runs on clickclack-stock.** The migration targets ClickClack proper, so the surface-accurate before/after lives in [`clickclack-progress-surface-before-after.md`](clickclack-progress-surface-before-after.md). The animated capture referenced lower in this doc was recorded on **clickglass** (the earlier fork harness) and is kept for history.
+
 ## Real environment
 
 - OpenClaw gateway built from branch `fix/channel-hidden-commentary` and restarted on `2026-06-11T15:31Z`.
