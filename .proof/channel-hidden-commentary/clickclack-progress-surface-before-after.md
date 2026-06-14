@@ -4,18 +4,20 @@ Canonical before/after for the channel-hidden-commentary work, recorded on **cli
 
 ## What this proves
 
-Stock ClickClack shows you the agent's final message and nothing else. While an agent works a turn, the channel gives no view of the tool steps or commentary happening server-side. The progress producer captures that in-flight activity as a durable **PREAMBLE** panel attached to the agent message — one row per step — that a reader can expand to see exactly what the agent did.
+Stock ClickClack shows you the agent's final message and nothing else. While an agent works a turn, the channel gives no view of the tool steps or commentary happening server-side. The patch adds an opt-in capability: the option to send the agent's in-flight progress _through_ to the channel, where it lands as a durable **PREAMBLE** panel attached to the agent message — one row per step — that a reader can expand to see exactly what the agent did.
 
-- **Before:** agent is working, the channel shows only the user's message; the reply lands with no record of the work behind it.
-- **After:** the agent message carries a `PREAMBLE` panel; expand it and every `exec` step the agent ran is listed in order, followed by the final reply.
+The before/after is that option off versus on. Nothing inside the ClickClack server changes between the two runs; the variable is purely whether progress is produced through to this consumer.
 
-## Controlled setup (one variable)
+- **Before:** option off. The agent is working, the channel shows only the user's message, and the reply lands with no record of the work behind it.
+- **After:** option on. The agent message carries a `PREAMBLE` panel; expand it and every `exec` step the agent ran is listed in order, followed by the final reply.
+
+## Controlled setup (one variable: the consumer control surface)
 
 A second, isolated stock install was stood up specifically as the source lab, so captures run uncontended and production (`:8100`) is never touched:
 
 - **Instance:** `clickclack-stock` on `127.0.0.1:8101`, own data dir, byte-identical binary, isolated SQLite.
 - **Channel:** native OpenClaw `clickclack` channel, `src` account → `:8101` (additive; the `:8100` default account is untouched).
-- **The only variable between the two runs is the progress producer bridge:** off for _before_, on for _after_. Same instance, same channel, same prompt shape.
+- **The single variable is the consumer-side control surface — whether in-flight progress is sent through to the channel:** off for _before_, on for _after_. Same instance, same channel, same prompt shape. The ClickClack server binary is byte-identical in both runs; nothing inside the product under test changes. So _before_ is not a different build with a feature flagged off — it is stock ClickClack with the option not sent through. That keeps the maintainer's decision clean: this is an additive, opt-in capability, and the two runs show exactly what the consumer sees with it off versus on.
 
 Prompt used (read-only, tool-heavy so the surface has several steps to show):
 
@@ -69,11 +71,9 @@ What the channel rendered, in order (durable rows, real turn `#061455`):
 > 4. serve.log — 815 lines.
 > 5. tail -3 — last activity 04:02:06: GET+POST on this channel's /messages endpoint, all 200/201. Server healthy on 127.0.0.1:8101.
 
-## Honesty notes
+## Scope and recording
 
-- **Surface:** clickclack-stock (`:8101`), OpenClaw native `clickclack` channel. Not clickglass.
-- **Single variable:** before vs after differ only by the progress producer being off vs on. Same instance, channel, and prompt shape.
-- **What the preamble shows here:** the agent emitted tool steps (`agent_tool` rows) for this turn; the producer also classifies non-tool progress (thinking/commentary/lifecycle) as `agent_commentary` rows when the model emits them. This run was tool-heavy, so the visible preamble is tool rows.
-- **Rendering is durable, not live-streamed:** in stock ClickClack these rows persist and render on channel load; they are not pushed live to an open tab. The animation above shows the build by refetching as each durable row lands — faithful to the real-time order the work happened in — while the live in-tab WebSocket paint is the next increment on top of this durable surface.
-- **Model:** the source channel session was pinned to a healthy primary for the capture; the progress behavior is model-agnostic.
-- **Recordings:** zero-dependency CDP screenshot capture pinned to a dedicated tab at 2× desktop resolution, stopped by watching the database for the reply, encoded to GIF and kept small for inline rendering.
+- **Surface:** clickclack-stock (`:8101`), OpenClaw native `clickclack` channel — the migration target, not clickglass. The server binary is byte-identical between runs.
+- **What the preamble shows here:** this run was tool-heavy, so the visible rows are `agent_tool` steps. The producer also classifies non-tool progress (thinking/commentary/lifecycle) into `agent_commentary` rows when the model emits them.
+- **How the recording is built:** durable rows render on channel load, so the capture refetches as each row lands and stitches the frames — faithful to the real-time order the work happened in. Live in-tab WebSocket paint is the next increment on top of this durable surface.
+- **Capture:** zero-dependency CDP screenshots, dedicated tab at 2× desktop resolution, stopped by watching the database for the reply, encoded to a small inline GIF. Source session pinned to a healthy primary; the progress behavior is model-agnostic.
