@@ -379,6 +379,7 @@ export function renderStreamingGroup(
   text: string,
   startedAt: number,
   isStreaming = true,
+  source: "commentary" | "final" = "final",
   onOpenSidebar?: (content: SidebarContent) => void,
   assistant?: AssistantIdentity,
   basePath?: string,
@@ -395,6 +396,7 @@ export function renderStreamingGroup(
             role: "assistant",
             content: [{ type: "text", text }],
             timestamp: startedAt,
+            openclawStreamFallback: { source: source === "commentary" ? "segment" : "current" },
           },
           `stream:${startedAt}`,
           { isStreaming, showReasoning: false },
@@ -436,6 +438,23 @@ type RenderMessageGroupOptions = {
 };
 
 type GroupedMessageRenderOptions = Parameters<typeof renderGroupedMessage>[2];
+
+function streamFallbackSource(message: Record<string, unknown>): string | null {
+  const fallback = message.openclawStreamFallback;
+  if (!fallback || typeof fallback !== "object" || Array.isArray(fallback)) {
+    return null;
+  }
+  const source = (fallback as { source?: unknown }).source;
+  return typeof source === "string" ? source : null;
+}
+
+function renderMessageSourceLabel(label: string | null) {
+  return label
+    ? html`<div class="chat-message-source-label" aria-label=${`${label} message block`}>
+        ${label}
+      </div>`
+    : nothing;
+}
 
 function buildGroupedMessageRenderOptions(
   group: MessageGroup,
@@ -1687,6 +1706,14 @@ function renderGroupedMessage(
   const jsonResult = markdown && !opts.isStreaming ? detectJson(markdown) : null;
 
   const isToolMessage = normalizedRole === "tool" || isToolResult;
+  const fallbackSource = streamFallbackSource(m);
+  const messageSourceLabel = isToolMessage
+    ? "Tool call"
+    : normalizedRole === "assistant"
+      ? fallbackSource === "segment"
+        ? "Commentary"
+        : "Final message"
+      : null;
   const reserveActionSpace = hasActions && !isToolMessage;
   const bubbleClasses = [
     "chat-bubble",
@@ -1759,6 +1786,7 @@ function renderGroupedMessage(
 
   return html`
     <div class="${bubbleClasses}">
+      ${renderMessageSourceLabel(messageSourceLabel)}
       ${renderReplyPill(normalizedMessage.replyTarget)}
       ${hasActions
         ? html`<div class="chat-bubble-actions">

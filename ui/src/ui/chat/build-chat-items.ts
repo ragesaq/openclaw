@@ -796,6 +796,7 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
           text: visibleText,
           startedAt: segment.ts,
           isStreaming: false,
+          source: "commentary",
         });
       }
     }
@@ -816,6 +817,7 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
         text,
         startedAt: segment.ts,
         isStreaming: false,
+        source: "commentary",
       });
     }
   }
@@ -833,6 +835,7 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
           text: visibleText,
           startedAt,
           isStreaming: true,
+          source: "final",
         });
       }
     } else if (props.stream.trim().length === 0) {
