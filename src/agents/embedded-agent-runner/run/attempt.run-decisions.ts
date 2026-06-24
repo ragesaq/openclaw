@@ -6,7 +6,7 @@ import {
   resolveSessionLockMaxHoldFromTimeout,
   resolveSessionWriteLockOptions,
 } from "../../session-write-lock.js";
-import { UNKNOWN_TOOL_THRESHOLD } from "../../tool-loop-detection.js";
+import { CRITICAL_THRESHOLD, UNKNOWN_TOOL_THRESHOLD } from "../../tool-loop-detection.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
 
 /**
@@ -64,6 +64,37 @@ export function resolveUnknownToolGuardThreshold(loopDetection?: {
     return Math.floor(raw);
   }
   return UNKNOWN_TOOL_THRESHOLD;
+}
+
+/**
+ * Number of extra identical-tool-call retries tolerated after the loop
+ * detector's critical block point before the stream-layer loop breaker rewrites
+ * the assistant message. Keeps the breaker strictly downstream of the veto so
+ * blocking gets a fair chance to change model behavior first.
+ */
+export const REPEATED_TOOL_CALL_LOOP_BREAK_MARGIN = 5;
+
+/**
+ * Resolves the consecutive identical-tool-call threshold for the stream-layer
+ * loop breaker. Returns 0 (disabled) unless loop detection is enabled, since
+ * the breaker is the escalation of the before_tool_call loop detector: when
+ * detection is off there is no veto loop to break. The threshold sits a fixed
+ * margin above the critical block point so the breaker only fires after the
+ * veto has demonstrably failed to stop the model re-issuing the call.
+ */
+export function resolveRepeatedToolCallLoopBreakThreshold(loopDetection?: {
+  enabled?: boolean;
+  criticalThreshold?: number;
+}): number {
+  if (loopDetection?.enabled !== true) {
+    return 0;
+  }
+  const rawCritical = loopDetection.criticalThreshold;
+  const critical =
+    typeof rawCritical === "number" && Number.isFinite(rawCritical) && rawCritical > 0
+      ? Math.floor(rawCritical)
+      : CRITICAL_THRESHOLD;
+  return critical + REPEATED_TOOL_CALL_LOOP_BREAK_MARGIN;
 }
 
 /**

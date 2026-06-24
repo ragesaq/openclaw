@@ -414,6 +414,7 @@ import {
   resolveAttemptStreamAuthProfileId,
   resolveAttemptToolPolicyMessageProvider,
   resolveEmbeddedAttemptSessionWriteLockOptions,
+  resolveRepeatedToolCallLoopBreakThreshold,
   resolveUnknownToolGuardThreshold,
   shouldRunLlmOutputHooksForAttempt,
 } from "./attempt.run-decisions.js";
@@ -451,6 +452,7 @@ import {
   sanitizeOpenAIResponsesReplayForStream,
   sanitizeReplayToolCallIdsForStream,
   shouldApplyReplayToolCallIdSanitizer,
+  wrapStreamFnGuardRepeatedToolCallLoop,
   wrapStreamFnPromoteStandaloneTextToolCalls,
   wrapStreamFnSanitizeMalformedToolCalls,
   wrapStreamFnTrimToolCallNames,
@@ -3079,6 +3081,17 @@ export async function runEmbeddedAttempt(
         liveAllowedToolNames,
         {
           unknownToolThreshold: resolveUnknownToolGuardThreshold(clientToolLoopDetection),
+        },
+      );
+      // Break runaway identical-tool-call loops the before_tool_call loop
+      // detector can only veto (returns isError) but cannot stop. After the
+      // model re-emits the same blocked call past the threshold, rewrite the
+      // assistant turn to plain text so the run ends with a reply instead of
+      // spinning until it hard-errors. Active only when loop detection is on.
+      activeSession.agent.streamFn = wrapStreamFnGuardRepeatedToolCallLoop(
+        activeSession.agent.streamFn,
+        {
+          threshold: resolveRepeatedToolCallLoopBreakThreshold(clientToolLoopDetection),
         },
       );
 

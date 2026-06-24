@@ -1,9 +1,11 @@
 // Coverage for small run-attempt decision helpers.
 import { describe, expect, it } from "vitest";
 import {
+  REPEATED_TOOL_CALL_LOOP_BREAK_MARGIN,
   resolveAttemptStreamAuthProfileId,
   resolveAttemptToolPolicyMessageProvider,
   resolveEmbeddedAttemptSessionWriteLockOptions,
+  resolveRepeatedToolCallLoopBreakThreshold,
   resolveUnknownToolGuardThreshold,
   shouldRunLlmOutputHooksForAttempt,
 } from "./attempt.run-decisions.js";
@@ -19,6 +21,37 @@ describe("resolveEmbeddedAttemptSessionWriteLockOptions", () => {
     });
 
     expect(options.maxHoldMs).toBe(720_000);
+  });
+});
+
+describe("resolveRepeatedToolCallLoopBreakThreshold", () => {
+  it("is disabled (0) when loop detection is disabled", () => {
+    expect(resolveRepeatedToolCallLoopBreakThreshold(undefined)).toBe(0);
+    expect(resolveRepeatedToolCallLoopBreakThreshold({ enabled: false })).toBe(0);
+    expect(
+      resolveRepeatedToolCallLoopBreakThreshold({ enabled: false, criticalThreshold: 20 }),
+    ).toBe(0);
+  });
+
+  it("sits a fixed margin above the critical block point when enabled", () => {
+    // Defaults to CRITICAL_THRESHOLD (20) + margin when no critical override.
+    expect(resolveRepeatedToolCallLoopBreakThreshold({ enabled: true })).toBe(
+      20 + REPEATED_TOOL_CALL_LOOP_BREAK_MARGIN,
+    );
+    // Honors a configured critical threshold so the breaker stays downstream of
+    // the veto regardless of tuning.
+    expect(resolveRepeatedToolCallLoopBreakThreshold({ enabled: true, criticalThreshold: 8 })).toBe(
+      8 + REPEATED_TOOL_CALL_LOOP_BREAK_MARGIN,
+    );
+  });
+
+  it("falls back to the default critical threshold for invalid critical values", () => {
+    expect(resolveRepeatedToolCallLoopBreakThreshold({ enabled: true, criticalThreshold: 0 })).toBe(
+      20 + REPEATED_TOOL_CALL_LOOP_BREAK_MARGIN,
+    );
+    expect(
+      resolveRepeatedToolCallLoopBreakThreshold({ enabled: true, criticalThreshold: -3 }),
+    ).toBe(20 + REPEATED_TOOL_CALL_LOOP_BREAK_MARGIN);
   });
 });
 

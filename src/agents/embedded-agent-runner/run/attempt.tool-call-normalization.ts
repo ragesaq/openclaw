@@ -28,6 +28,7 @@ import {
   sanitizeToolCallIdsForCloudCodeAssist,
   type ToolCallIdMode,
 } from "../../tool-call-id.js";
+import { hashToolCall } from "../../tool-loop-detection.js";
 import { couldNormalizeToolNamePrefixToAllowedTool, normalizeToolName } from "../../tool-policy.js";
 import { shouldAllowProviderOwnedThinkingReplay } from "../../transcript-policy.js";
 import type { TranscriptPolicy } from "../../transcript-policy.js";
@@ -1132,6 +1133,237 @@ export function wrapStreamFnTrimToolCallNames(
       unknownToolThreshold: guardOptions?.unknownToolThreshold,
       state: unknownToolGuardState,
     });
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Repeated-tool-call loop breaker
+//
+// Sibling guard to the unknown-tool loop guard above. The before_tool_call loop
+// detector vetoes a runaway tool call (same tool + identical args, no progress)
+// by returning an isError tool result. Some models (observed with glm-5.2 via
+// opencode-go) treat that veto as something to retry verbatim and re-emit the
+// identical tool call indefinitely, never adapting. The before_tool_call veto
+// can only block the individual call; it cannot stop the run, so the model
+// spins until the run hard-errors with no user-facing reply.
+//
+// This guard breaks that spin at the provider stream layer, exactly like the
+// unknown-tool guard: once the model emits the same tool call (name + identical
+// arguments) more than `threshold` times in a row, the assistant message is
+// rewritten to plain text so the run completes with a graceful reply instead of
+// looping. The threshold is deliberately well above the loop detector's
+// critical block point so it only fires after blocking has demonstrably failed
+// to change the model's behavior; no legitimate flow re-issues a byte-identical
+// known-tool call that many times consecutively.
+// ---------------------------------------------------------------------------
+
+type RepeatedToolCallLoopGuardState = {
+  lastSignature?: string;
+  lastToolName?: string;
+  count: number;
+  countedMessages: WeakSet<object>;
+};
+
+function resolveToolCallBlockArguments(block: {
+  arguments?: unknown;
+  input?: unknown;
+  partialArgs?: unknown;
+}): unknown {
+  if (block.arguments !== undefined && block.arguments !== null) {
+    return block.arguments;
+  }
+  if (block.input !== undefined && block.input !== null) {
+    return block.input;
+  }
+  if (typeof block.partialArgs === "string" && block.partialArgs.trim().length > 0) {
+    try {
+      return JSON.parse(block.partialArgs) as unknown;
+    } catch {
+      return block.partialArgs;
+    }
+  }
+  return {};
+}
+
+/**
+ * Builds a stable signature for every tool call in an assistant message. Returns
+ * undefined when the message contains no tool calls (e.g. a pure-text turn),
+ * which resets the repeat counter. Multiple tool calls in one message are
+ * combined into a single order-independent signature so that a repeated
+ * identical multi-call turn still counts as no progress.
+ */
+function resolveRepeatedToolCallSignature(
+  message: unknown,
+): { signature: string; toolName: string } | undefined {
+  if (!message || typeof message !== "object") {
+    return undefined;
+  }
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+  const perCall: string[] = [];
+  let firstToolName: string | undefined;
+  for (const block of content) {
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    const typedBlock = block as { type?: unknown; name?: unknown };
+    if (!isRunnerToolCallBlockType(typedBlock.type)) {
+      continue;
+    }
+    const name = typeof typedBlock.name === "string" ? typedBlock.name.trim() : "";
+    if (!name) {
+      // Incomplete/blank tool calls are handled by the unknown-tool guard; do
+      // not let them feed the repeat counter.
+      return undefined;
+    }
+    if (!firstToolName) {
+      firstToolName = name;
+    }
+    perCall.push(hashToolCall(name, resolveToolCallBlockArguments(block as never)));
+  }
+  if (perCall.length === 0 || !firstToolName) {
+    return undefined;
+  }
+  perCall.sort();
+  return { signature: perCall.join("|"), toolName: firstToolName };
+}
+
+function rewriteRepeatedToolCallLoopMessage(
+  message: unknown,
+  toolName: string,
+  count: number,
+): void {
+  if (!message || typeof message !== "object") {
+    return;
+  }
+  (message as { content?: unknown }).content = [
+    {
+      type: "text",
+      text: `I have called the tool "${toolName}" with identical arguments ${count} times in a row without making progress, and the call keeps being blocked as a runaway loop. I need to stop retrying it now and report where I am: I am stuck repeating this tool call, so I will summarize the current state and ask how to proceed instead of calling it again.`,
+    },
+  ];
+}
+
+/**
+ * Tracks consecutive identical tool calls on the live stream and rewrites the
+ * assistant message to plain text once the repeat count exceeds `threshold`.
+ * Mirrors `guardUnknownToolLoopInMessage`: only final messages advance the
+ * counter (`countAttempt`), while partial stream events may rewrite once the
+ * threshold has already been crossed.
+ */
+function guardRepeatedToolCallLoopInMessage(
+  message: unknown,
+  state: RepeatedToolCallLoopGuardState,
+  params: { threshold?: number; countAttempt: boolean },
+): boolean {
+  const threshold = params.threshold;
+  if (threshold === undefined || threshold <= 0) {
+    return false;
+  }
+  const resolved = resolveRepeatedToolCallSignature(message);
+  if (!resolved) {
+    // No tool call (or blank/incomplete): a pure-text or non-repeating turn
+    // resets the streak. Only final messages mutate counter state.
+    if (params.countAttempt) {
+      state.lastSignature = undefined;
+      state.lastToolName = undefined;
+      state.count = 0;
+    }
+    return false;
+  }
+
+  if (!params.countAttempt) {
+    if (state.lastSignature === resolved.signature && state.count > threshold) {
+      rewriteRepeatedToolCallLoopMessage(message, resolved.toolName, state.count);
+    }
+    return false;
+  }
+
+  if (message && typeof message === "object") {
+    if (state.countedMessages.has(message)) {
+      if (state.lastSignature === resolved.signature && state.count > threshold) {
+        rewriteRepeatedToolCallLoopMessage(message, resolved.toolName, state.count);
+      }
+      return true;
+    }
+    state.countedMessages.add(message);
+  }
+
+  if (state.lastSignature === resolved.signature) {
+    state.count += 1;
+  } else {
+    state.lastSignature = resolved.signature;
+    state.lastToolName = resolved.toolName;
+    state.count = 1;
+  }
+
+  if (state.count > threshold) {
+    rewriteRepeatedToolCallLoopMessage(message, resolved.toolName, state.count);
+  }
+  return true;
+}
+
+function wrapStreamGuardRepeatedToolCallLoop(
+  stream: AssistantStream,
+  threshold: number,
+  state: RepeatedToolCallLoopGuardState,
+): AssistantStream {
+  let streamAttemptAlreadyCounted = false;
+  const originalResult = stream.result.bind(stream);
+  stream.result = async () => {
+    const message = await originalResult();
+    guardRepeatedToolCallLoopInMessage(message, state, {
+      threshold,
+      countAttempt: !streamAttemptAlreadyCounted,
+    });
+    return message;
+  };
+
+  wrapStreamObjectEvents(stream, (event) => {
+    if (event.message && typeof event.message === "object") {
+      const counted = guardRepeatedToolCallLoopInMessage(event.message, state, {
+        threshold,
+        countAttempt: !streamAttemptAlreadyCounted,
+      });
+      streamAttemptAlreadyCounted ||= counted;
+    }
+    guardRepeatedToolCallLoopInMessage(event.partial, state, {
+      threshold,
+      countAttempt: false,
+    });
+  });
+
+  return stream;
+}
+
+/**
+ * Breaks runaway identical-tool-call loops that the before_tool_call loop
+ * detector can only veto but not stop. Active only when loop detection is
+ * enabled (caller passes `threshold > 0`); otherwise returns the base stream fn
+ * unchanged.
+ */
+export function wrapStreamFnGuardRepeatedToolCallLoop(
+  baseFn: StreamFn,
+  options?: { threshold?: number },
+): StreamFn {
+  const threshold = options?.threshold;
+  if (threshold === undefined || threshold <= 0) {
+    return baseFn;
+  }
+  const state: RepeatedToolCallLoopGuardState = {
+    count: 0,
+    countedMessages: new WeakSet<object>(),
+  };
+  return (model, context, streamOptions) => {
+    const maybeStream = baseFn(model, context, streamOptions);
+    if (maybeStream && typeof maybeStream === "object" && "then" in maybeStream) {
+      return Promise.resolve(maybeStream).then((stream) =>
+        wrapStreamGuardRepeatedToolCallLoop(stream, threshold, state),
+      );
+    }
+    return wrapStreamGuardRepeatedToolCallLoop(maybeStream, threshold, state);
   };
 }
 
