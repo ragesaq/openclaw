@@ -571,6 +571,39 @@ describe("listThinkingLevels", () => {
     ).toBe(true);
   });
 
+  it("uses catalog compat reasoning efforts to expose max for configured custom models", () => {
+    const catalog = [
+      {
+        provider: "opencode-go",
+        id: "glm-5.2",
+        name: "GLM-5.2",
+        reasoning: true,
+        compat: { supportedReasoningEfforts: ["low", "medium", "high", "max"] },
+      },
+    ];
+
+    expect(listThinkingLevels("opencode-go", "glm-5.2", catalog)).toContain("max");
+    expect(formatThinkingLevels("opencode-go", "glm-5.2", ", ", catalog)).toBe(
+      "off, minimal, low, medium, high, max",
+    );
+    expect(
+      isThinkingLevelSupported({
+        provider: "opencode-go",
+        model: "glm-5.2",
+        level: "max",
+        catalog,
+      }),
+    ).toBe(true);
+    expect(
+      resolveSupportedThinkingLevel({
+        provider: "opencode-go",
+        model: "glm-5.2",
+        level: "max",
+        catalog,
+      }),
+    ).toBe("max");
+  });
+
   it("does not let catalog xhigh compat override binary thinking providers", () => {
     providerRuntimeMocks.resolveProviderBinaryThinking.mockReturnValue(true);
     const catalog = [

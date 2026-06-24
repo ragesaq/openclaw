@@ -306,6 +306,44 @@ describe("OpenAI-compatible completions params", () => {
     expect(capturedStop).toEqual(["STOP"]);
   });
 
+  it("maps OpenCode Go GLM-5.2 max thinking to provider-native reasoning effort", async () => {
+    let capturedReasoningEffort: unknown;
+    let capturedMaxTokens: unknown;
+    const stream = streamSimpleOpenAICompletions(
+      {
+        ...createModel(128_000),
+        id: "glm-5.2",
+        name: "GLM-5.2",
+        provider: "opencode-go",
+        baseUrl: "https://opencode.ai/zen/go/v1",
+        reasoning: true,
+        thinkingLevelMap: { xhigh: "max", max: "max" },
+        compat: {
+          supportsReasoningEffort: true,
+          supportedReasoningEfforts: ["low", "medium", "high", "max"],
+          maxTokensField: "max_tokens",
+        },
+      },
+      context,
+      {
+        apiKey: "sk-test",
+        maxTokens: 128_000,
+        reasoning: "max",
+        onPayload(payload) {
+          capturedReasoningEffort = (payload as { reasoning_effort?: unknown }).reasoning_effort;
+          capturedMaxTokens = (payload as { max_tokens?: unknown }).max_tokens;
+          throw new Error("stop before network");
+        },
+      },
+    );
+
+    const result = await stream.result();
+
+    expect(result.stopReason).toBe("error");
+    expect(capturedReasoningEffort).toBe("max");
+    expect(capturedMaxTokens).toBe(128_000);
+  });
+
   it("keeps prompt cache keys when long retention is disabled", async () => {
     let capturedCacheKey: unknown;
     let capturedRetention: unknown;

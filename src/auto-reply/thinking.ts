@@ -107,6 +107,14 @@ function catalogSupportsXHigh(compat: ThinkingCatalogEntry["compat"]): boolean {
   return efforts.some((effort) => normalizeThinkLevel(effort) === "xhigh");
 }
 
+function catalogSupportsMax(compat: ThinkingCatalogEntry["compat"]): boolean {
+  const efforts = compat?.supportedReasoningEfforts;
+  if (!Array.isArray(efforts)) {
+    return false;
+  }
+  return efforts.some((effort) => normalizeThinkLevel(effort) === "max");
+}
+
 function normalizeProfileLevel(
   level: ProviderThinkingProfile["levels"][number],
 ): RankedThinkingLevelOption | undefined {
@@ -236,6 +244,9 @@ export function resolveThinkingProfile(params: {
       : buildBaseThinkingProfile(defaultLevel);
   if (binaryDecision !== true && catalogSupportsXHigh(context.compat)) {
     appendProfileLevel(profile, "xhigh");
+  }
+  if (binaryDecision !== true && catalogSupportsMax(context.compat)) {
+    appendProfileLevel(profile, "max");
   }
   const policyContext = {
     provider: context.normalizedProvider,

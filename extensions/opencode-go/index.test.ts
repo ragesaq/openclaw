@@ -132,13 +132,19 @@ describe("opencode-go provider plugin", () => {
     expect(glm52.baseUrl).toBe("https://opencode.ai/zen/go/v1");
     expect(glm52.input).toEqual(["text"]);
     expect(glm52.reasoning).toBe(true);
+    expect(glm52.thinkingLevelMap).toEqual({ xhigh: "max", max: "max" });
     expect(glm52.contextWindow).toBe(1_000_000);
-    expect(glm52.maxTokens).toBe(131_072);
+    expect(glm52.maxTokens).toBe(128_000);
     expect(glm52.cost).toEqual({
       input: 1.4,
       output: 4.4,
       cacheRead: 0.26,
       cacheWrite: 0,
+    });
+    expect(requireRecord(glm52.compat, "GLM-5.2 compat")).toMatchObject({
+      supportsReasoningEffort: true,
+      supportedReasoningEfforts: ["low", "medium", "high", "max"],
+      maxTokensField: "max_tokens",
     });
 
     const kimi = requireMapEntry(models, "kimi-k2.6");
@@ -260,7 +266,13 @@ describe("opencode-go provider plugin", () => {
     expect(glm52).toMatchObject({
       provider: "opencode-go",
       contextWindow: 1_000_000,
-      maxTokens: 131_072,
+      maxTokens: 128_000,
+      thinkingLevelMap: { xhigh: "max", max: "max" },
+      compat: {
+        supportsReasoningEffort: true,
+        supportedReasoningEfforts: ["low", "medium", "high", "max"],
+        maxTokensField: "max_tokens",
+      },
     });
   });
 

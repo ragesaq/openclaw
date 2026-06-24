@@ -118,6 +118,7 @@ const OPENCODE_GO_MODELS = (
       provider: PROVIDER_ID,
       baseUrl: OPENCODE_GO_OPENAI_BASE_URL,
       reasoning: true,
+      thinkingLevelMap: { xhigh: "max", max: "max" },
       input: ["text"],
       cost: {
         input: 1.4,
@@ -126,7 +127,12 @@ const OPENCODE_GO_MODELS = (
         cacheWrite: 0,
       },
       contextWindow: 1_000_000,
-      maxTokens: 131_072,
+      maxTokens: 128_000,
+      compat: {
+        supportsReasoningEffort: true,
+        supportedReasoningEfforts: ["low", "medium", "high", "max"],
+        maxTokensField: "max_tokens",
+      },
     },
     {
       id: "hy3-preview",
