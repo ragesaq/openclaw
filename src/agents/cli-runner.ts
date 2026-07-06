@@ -57,7 +57,7 @@ import {
   runAgentHarnessLlmInputHook,
   runAgentHarnessLlmOutputHook,
 } from "./harness/lifecycle-hook-helpers.js";
-import type { AgentMessage } from "./runtime/index.js";
+import { estimateTokens, type AgentMessage } from "./runtime/index.js";
 import { SessionManager } from "./sessions/session-manager.js";
 import { buildAssistantMessage, buildUsageWithNoCost } from "./stream-message-shared.js";
 
@@ -164,6 +164,19 @@ export async function isCliBindingFlushed(
 
 function flushSessionManagerFile(sessionManager: SessionManager): void {
   (sessionManager as unknown as { rewriteFile?: () => void }).rewriteFile?.();
+}
+
+function estimateCliPromptTokens(prompt: string | undefined): number | undefined {
+  const text = prompt?.trim();
+  if (!text) {
+    return undefined;
+  }
+  const tokens = estimateTokens({
+    role: "user",
+    content: text,
+    timestamp: 0,
+  } as AgentMessage);
+  return Number.isFinite(tokens) && tokens > 0 ? Math.ceil(tokens) : undefined;
 }
 
 function buildHandledReplyPayloads(reply?: ReplyPayload) {
@@ -965,6 +978,10 @@ export async function runPreparedCliAgent(
       : (resultParams.effectiveCliSessionId ?? params.sessionId ?? "");
     const yielded = resultParams.output.yielded === true;
     const stopReason = yielded ? "end_turn" : "completed";
+    const promptTokens =
+      resultParams.output.usage === undefined
+        ? estimateCliPromptTokens(resultParams.output.finalPromptText)
+        : undefined;
 
     return {
       payloads,
@@ -1009,6 +1026,7 @@ export async function runPreparedCliAgent(
           model: context.modelId,
           usage: resultParams.output.usage,
           ...(resultParams.output.usage ? { lastCallUsage: resultParams.output.usage } : {}),
+          ...(promptTokens ? { promptTokens } : {}),
           ...(persistedCliSessionId
             ? {
                 cliSessionBinding: {
