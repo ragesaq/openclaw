@@ -229,6 +229,21 @@ describe("runPreparedCliAgent context engine lifecycle", () => {
     expect(dispose).not.toHaveBeenCalled();
   });
 
+  it("estimates prompt tokens for successful CLI turns without usage", async () => {
+    executePreparedCliRunMock.mockResolvedValueOnce({
+      text: " final answer ",
+      rawText: " final answer ",
+      sessionId: "external-cli-session-1",
+      finalPromptText: "prompt sent to cli",
+    });
+
+    const result = await runPreparedCliAgent(buildPreparedContext(createContextEngine()));
+
+    expect(result.meta.agentMeta?.usage).toBeUndefined();
+    expect(result.meta.agentMeta?.lastCallUsage).toBeUndefined();
+    expect(result.meta.agentMeta?.promptTokens).toBe(5);
+  });
+
   it("does not synthesize a context-engine user turn for empty transcript prompts", async () => {
     const afterTurn = vi.fn<NonNullable<ContextEngine["afterTurn"]>>(async () => {});
     const dispose = vi.fn(async () => {});
