@@ -23,6 +23,7 @@ const BROWSER_SAFE_THINKING_LEVELS: ThinkLevel[] = [
   "xhigh",
   "adaptive",
   "max",
+  "ultra",
 ];
 
 type DefineChatCommandInput = {

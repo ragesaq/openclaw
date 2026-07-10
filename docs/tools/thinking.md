@@ -8,7 +8,7 @@ title: "Thinking levels"
 ## What it does
 
 - Inline directive in any inbound body: `/t <level>`, `/think:<level>`, or `/thinking <level>`.
-- Levels (aliases): `off | minimal | low | medium | high | xhigh | adaptive | max`, roughly mirroring Anthropic's classic "think" < "think hard" < "think harder" < "ultrathink" magic-word ladder:
+- Levels (aliases): `off | minimal | low | medium | high | xhigh | adaptive | max | ultra`, roughly mirroring Anthropic's classic "think" < "think hard" < "think harder" < "ultrathink" magic-word ladder:
   - minimal ~ "think"
   - low ~ "think hard"
   - medium ~ "think harder"
@@ -16,12 +16,14 @@ title: "Thinking levels"
   - xhigh ~ "ultrathink+" (GPT-5.2+ and Codex models, plus Anthropic Claude Opus 4.7+ effort)
   - adaptive → provider-managed adaptive thinking (supported for Claude 4.6 on Anthropic/Bedrock, Anthropic Claude Opus 4.7+, and Google Gemini dynamic thinking)
   - max → provider max reasoning (Anthropic Claude Opus 4.7+; Ollama maps this to its highest native `think` effort)
+  - ultra → compat-driven top tier above `max`. Only models whose catalog `compat.supportedReasoningEfforts` advertises `"ultra"` (for example Codex app-server GPT-5.6 sol/terra) expose it; other models fall back to their strongest supported level.
   - `x-high`, `x_high`, `extra-high`, `extra high`, and `extra_high` map to `xhigh`.
   - `highest` maps to `high`.
 - Provider notes:
   - Thinking menus and pickers are provider-profile driven. Provider plugins declare the exact level set for the selected model, including labels such as binary `on`.
-  - `adaptive`, `xhigh`, and `max` are only advertised for provider/model profiles that support them. Typed directives for unsupported levels are rejected with that model's valid options.
-  - Existing stored unsupported levels are remapped by provider profile rank. `adaptive` falls back to `medium` on non-adaptive models, while `xhigh` and `max` fall back to the largest supported non-off level for the selected model.
+  - `adaptive`, `xhigh`, `max`, and `ultra` are only advertised for provider/model profiles that support them. Typed directives for unsupported levels are rejected with that model's valid options.
+  - Existing stored unsupported levels are remapped by provider profile rank. `adaptive` falls back to `medium` on non-adaptive models, while `xhigh`, `max`, and `ultra` fall back to the largest supported non-off level for the selected model.
+  - `ultrathink` remains an alias for `high` (the classic Claude magic-word ladder). Bare `ultra` selects the distinct compat-driven ultra tier.
   - Anthropic Claude 4.6 models default to `adaptive` when no explicit thinking level is set.
   - Anthropic Claude Opus 4.8 and Opus 4.7 keep thinking off unless you explicitly set a thinking level. Opus 4.8's provider-owned effort default is `high` after adaptive thinking is enabled.
   - Anthropic Claude Opus 4.7+ maps `/think xhigh` to adaptive thinking plus `output_config.effort: "xhigh"`, because `/think` is a thinking directive and `xhigh` is the Opus effort setting.

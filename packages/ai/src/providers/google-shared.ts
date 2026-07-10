@@ -69,7 +69,7 @@ type GoogleGenerateContentClient = {
   };
 };
 
-type ClampedGoogleThinkingLevel = Exclude<AgentThinkingLevel, "xhigh" | "max">;
+type ClampedGoogleThinkingLevel = Exclude<AgentThinkingLevel, "xhigh" | "max" | "ultra">;
 
 /**
  * Determines whether a streamed Gemini `Part` should be treated as "thinking".
@@ -561,7 +561,7 @@ export function buildGoogleSimpleThinking<T extends GoogleApiType>(
     return { enabled: false };
   }
   const effort = (
-    clampedReasoning === "max" ? "high" : clampedReasoning
+    clampedReasoning === "max" || clampedReasoning === "ultra" ? "high" : clampedReasoning
   ) as ClampedGoogleThinkingLevel;
 
   if (

@@ -111,6 +111,16 @@ function catalogSupportsXHigh(compat: ThinkingCatalogEntry["compat"]): boolean {
   return efforts.some((effort) => normalizeThinkLevel(effort) === "xhigh");
 }
 
+// `ultra` is strictly compat-driven: it only appears when the model catalog
+// advertises it (for example Codex app-server GPT-5.6 sol/terra metadata).
+function catalogSupportsUltra(compat: ThinkingCatalogEntry["compat"]): boolean {
+  const efforts = compat?.supportedReasoningEfforts;
+  if (!Array.isArray(efforts)) {
+    return false;
+  }
+  return efforts.some((effort) => normalizeThinkLevel(effort) === "ultra");
+}
+
 function normalizeProfileLevel(
   level: ProviderThinkingProfile["levels"][number],
 ): RankedThinkingLevelOption | undefined {
@@ -240,6 +250,9 @@ export function resolveThinkingProfile(params: {
       : buildBaseThinkingProfile(defaultLevel);
   if (binaryDecision !== true && catalogSupportsXHigh(context.compat)) {
     appendProfileLevel(profile, "xhigh");
+  }
+  if (binaryDecision !== true && catalogSupportsUltra(context.compat)) {
+    appendProfileLevel(profile, "ultra");
   }
   const policyContext = {
     provider: context.normalizedProvider,

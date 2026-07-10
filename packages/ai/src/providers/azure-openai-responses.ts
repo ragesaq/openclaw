@@ -110,7 +110,9 @@ export const streamSimpleAzureOpenAIResponses: StreamFunction<
 
   return streamAzureOpenAIResponses(model, context, {
     ...base,
-    reasoningEffort: reasoningEffort === "max" ? "xhigh" : reasoningEffort,
+    reasoningEffort:
+      // Azure has no max/ultra reasoning contract; clamp to xhigh.
+      reasoningEffort === "max" || reasoningEffort === "ultra" ? "xhigh" : reasoningEffort,
   } satisfies AzureOpenAIResponsesOptions);
 };
 

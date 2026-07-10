@@ -12,7 +12,9 @@ export function mapThinkingLevelToReasoningEffort(thinkingLevel: ThinkLevel): Re
   if (thinkingLevel === "adaptive") {
     return "medium";
   }
-  if (thinkingLevel === "max") {
+  if (thinkingLevel === "max" || thinkingLevel === "ultra") {
+    // Generic OpenAI-compatible providers have no ultra contract; model-aware
+    // callers resolve `ultra` through compat metadata before reaching here.
     return "xhigh";
   }
   return thinkingLevel;

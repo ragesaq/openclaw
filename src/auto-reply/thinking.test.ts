@@ -74,6 +74,17 @@ describe("normalizeThinkLevel", () => {
     expect(normalizeThinkLevel("Adaptive")).toBe("adaptive");
   });
 
+  it("treats ultra as a distinct level while ultrathink stays high", () => {
+    expect(normalizeThinkLevel("ultra")).toBe("ultra");
+    expect(normalizeThinkLevel("Ultra")).toBe("ultra");
+    expect(normalizeThinkLevel("ultrathink")).toBe("high");
+  });
+
+  it("does not over-match nearby ultra words", () => {
+    expect(normalizeThinkLevel("ultras")).toBeUndefined();
+    expect(normalizeThinkLevel("ultramax")).toBeUndefined();
+  });
+
   it("accepts max as its own level", () => {
     expect(normalizeThinkLevel("max")).toBe("max");
     expect(normalizeThinkLevel("MAX")).toBe("max");
@@ -573,6 +584,46 @@ describe("listThinkingLevels", () => {
     ).toBe(true);
   });
 
+  it("uses catalog compat reasoning efforts to expose ultra only when advertised", () => {
+    const catalog = [
+      {
+        provider: "codex",
+        id: "gpt-5.6-sol",
+        name: "GPT-5.6 Sol",
+        reasoning: true,
+        compat: {
+          supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+        },
+      },
+      {
+        provider: "codex",
+        id: "gpt-5.6-luna",
+        name: "GPT-5.6 Luna",
+        reasoning: true,
+        compat: { supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"] },
+      },
+    ];
+
+    expect(listThinkingLevels("codex", "gpt-5.6-sol", catalog)).toContain("ultra");
+    expect(listThinkingLevels("codex", "gpt-5.6-luna", catalog)).not.toContain("ultra");
+    expect(
+      isThinkingLevelSupported({
+        provider: "codex",
+        model: "gpt-5.6-sol",
+        level: "ultra",
+        catalog,
+      }),
+    ).toBe(true);
+    expect(
+      isThinkingLevelSupported({
+        provider: "codex",
+        model: "gpt-5.6-luna",
+        level: "ultra",
+        catalog,
+      }),
+    ).toBe(false);
+  });
+
   it("does not let catalog xhigh compat override binary thinking providers", () => {
     providerRuntimeMocks.resolveProviderBinaryThinking.mockReturnValue(true);
     const catalog = [
@@ -874,7 +925,9 @@ describe("resolveEffectiveResponseUsage", () => {
     // Explicit "off" is stored and wins — non-off config default cannot re-enable it.
     expect(resolveEffectiveResponseUsage("off", "tokens")).toBe("off");
     expect(resolveEffectiveResponseUsage("off", "full")).toBe("off");
-    expect(resolveEffectiveResponseUsage("off", { default: "full", discord: "full" }, "discord")).toBe("off");
+    expect(
+      resolveEffectiveResponseUsage("off", { default: "full", discord: "full" }, "discord"),
+    ).toBe("off");
   });
 
   it("session explicit on value overrides config default", () => {
@@ -888,6 +941,6 @@ describe("resolveEffectiveResponseUsage", () => {
     // - "off"     = explicit off  → stays off
     const cfg = "tokens" as const;
     expect(resolveEffectiveResponseUsage(undefined, cfg)).toBe("tokens"); // inherits
-    expect(resolveEffectiveResponseUsage("off", cfg)).toBe("off");        // explicit off persists
+    expect(resolveEffectiveResponseUsage("off", cfg)).toBe("off"); // explicit off persists
   });
 });

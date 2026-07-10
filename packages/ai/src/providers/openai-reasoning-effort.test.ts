@@ -45,6 +45,41 @@ describe("OpenAI reasoning effort support", () => {
     expect(resolveOpenAIReasoningEffortForModel({ model, effort: "MAX" })).toBe("max");
   });
 
+  it("passes ultra through only when compat metadata advertises it", () => {
+    const solLike = {
+      provider: "openai",
+      id: "gpt-5.6-sol",
+      compat: {
+        supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      },
+    };
+    const lunaLike = {
+      provider: "openai",
+      id: "gpt-5.6-luna",
+      compat: {
+        supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+      },
+    };
+
+    expect(supportsOpenAIReasoningEffort(solLike, "ultra")).toBe(true);
+    expect(resolveOpenAIReasoningEffortForModel({ model: solLike, effort: "ultra" })).toBe("ultra");
+    // Without catalog support, ultra degrades to max first.
+    expect(supportsOpenAIReasoningEffort(lunaLike, "ultra")).toBe(false);
+    expect(resolveOpenAIReasoningEffortForModel({ model: lunaLike, effort: "ultra" })).toBe("max");
+  });
+
+  it("degrades ultra to xhigh when max is also unsupported", () => {
+    const model = {
+      provider: "openai",
+      id: "gpt-5.5",
+      compat: {
+        supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+      },
+    };
+
+    expect(resolveOpenAIReasoningEffortForModel({ model, effort: "ultra" })).toBe("xhigh");
+  });
+
   it("does not downgrade xhigh when model compat metadata declares it explicitly", () => {
     const model = {
       provider: "openai",

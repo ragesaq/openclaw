@@ -1944,7 +1944,10 @@ export function resolveReasoningEffort(
   ) {
     return thinkLevel;
   }
-  if (thinkLevel === "max" && isMaxReasoningCodexModel(modelId)) {
+  // `ultra` is compat-driven: only an app-server catalog that advertises it
+  // unlocks the literal effort above. Without metadata, degrade to `max` on
+  // families known to accept it instead of silently dropping reasoning.
+  if ((thinkLevel === "max" || thinkLevel === "ultra") && isMaxReasoningCodexModel(modelId)) {
     return "max";
   }
   return null;

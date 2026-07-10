@@ -16,7 +16,8 @@ export type OpenAIReasoningEffort =
   | "medium"
   | "high"
   | "xhigh"
-  | "max";
+  | "max"
+  | "ultra";
 
 export type OpenAIApiReasoningEffort = OpenAIReasoningEffort | (string & {});
 
@@ -47,6 +48,7 @@ const CANONICAL_REASONING_EFFORTS = new Set([
   "high",
   "xhigh",
   "max",
+  "ultra",
   "off",
 ]);
 
@@ -179,7 +181,10 @@ export function resolveOpenAIReasoningEffortForModel(params: {
   if (requested === "xhigh" && supported.includes("high")) {
     return "high";
   }
-  if (requested === "max" && supported.includes("xhigh")) {
+  if (requested === "ultra" && supported.includes("max")) {
+    return "max";
+  }
+  if ((requested === "max" || requested === "ultra") && supported.includes("xhigh")) {
     return "xhigh";
   }
   return supported.find(

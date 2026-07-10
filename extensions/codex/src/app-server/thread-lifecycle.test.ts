@@ -1469,6 +1469,28 @@ describe("resolveReasoningEffort (#71946)", () => {
       expect(resolveReasoningEffort("medium", "gpt-5.5-pro", supported)).toBe("medium");
       expect(resolveReasoningEffort("max", "gpt-5.5-pro", supported)).toBe("xhigh");
     });
+
+    it("passes ultra through when the app-server catalog advertises it", () => {
+      const solEfforts = ["low", "medium", "high", "xhigh", "max", "ultra"];
+
+      expect(resolveReasoningEffort("ultra", "gpt-5.6-sol", solEfforts)).toBe("ultra");
+      expect(resolveReasoningEffort("max", "gpt-5.6-sol", solEfforts)).toBe("max");
+    });
+
+    it("degrades ultra to the strongest supported effort without catalog support", () => {
+      const lunaEfforts = ["low", "medium", "high", "xhigh", "max"];
+
+      expect(resolveReasoningEffort("ultra", "gpt-5.6-luna", lunaEfforts)).toBe("max");
+      expect(resolveReasoningEffort("ultra", "gpt-5.5", ["low", "medium", "high", "xhigh"])).toBe(
+        "xhigh",
+      );
+    });
+
+    it("degrades ultra to max for 5.6 families when metadata is unavailable", () => {
+      expect(resolveReasoningEffort("ultra", "gpt-5.6-sol")).toBe("max");
+      expect(resolveReasoningEffort("ultra", "gpt-5.6-terra")).toBe("max");
+      expect(resolveReasoningEffort("ultra", "gpt-5.5")).toBe(null);
+    });
   });
 
   describe("legacy / non-modern Codex models", () => {

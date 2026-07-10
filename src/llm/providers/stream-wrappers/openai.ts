@@ -299,7 +299,9 @@ function resolveOpenAIThinkingPayloadEffort(params: {
   // providers keep literal minimal and max/xhigh until their owners opt in.
   const needsModelAwareEffort =
     provider === "openai" &&
-    (params.thinkingLevel === "max" || (params.thinkingLevel === "minimal" && usesNativeMax));
+    (params.thinkingLevel === "max" ||
+      params.thinkingLevel === "ultra" ||
+      (params.thinkingLevel === "minimal" && usesNativeMax));
   const mapped = needsModelAwareEffort
     ? (resolveOpenAIReasoningEffortForModel({
         model: params.model,

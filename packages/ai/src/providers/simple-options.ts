@@ -43,8 +43,12 @@ export function buildBaseOptions(
 
 export function clampReasoning(
   effort: ThinkingLevel | undefined,
-): Exclude<ThinkingLevel, "xhigh"> | undefined {
-  return effort === "xhigh" ? "high" : effort;
+): Exclude<ThinkingLevel, "xhigh" | "ultra"> | undefined {
+  if (effort === "xhigh") {
+    return "high";
+  }
+  // Token-budget providers have no ultra tier; reuse the max budget ceiling.
+  return effort === "ultra" ? "max" : effort;
 }
 
 export function adjustMaxTokensForThinking(

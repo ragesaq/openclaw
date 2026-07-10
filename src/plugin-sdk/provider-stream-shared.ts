@@ -688,7 +688,8 @@ export type GoogleThinkingInputLevel =
   | "adaptive"
   | "high"
   | "max"
-  | "xhigh";
+  | "xhigh"
+  | "ultra";
 
 // Gemini 2.5 Pro only works in thinking mode and rejects thinkingBudget=0 with
 // "Budget 0 is invalid. This model only works in thinking mode."
@@ -741,6 +742,7 @@ export function resolveGoogleGemini3ThinkingLevel(params: {
       case "high":
       case "max":
       case "xhigh":
+      case "ultra":
         return "HIGH";
       case "adaptive":
         return undefined;
@@ -769,6 +771,7 @@ export function resolveGoogleGemini3ThinkingLevel(params: {
     case "high":
     case "max":
     case "xhigh":
+    case "ultra":
       return "HIGH";
     case "adaptive":
       return undefined;

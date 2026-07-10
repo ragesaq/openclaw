@@ -597,7 +597,7 @@ export const streamSimpleOpenAICompletions: StreamFunction<
   const reasoningEffort =
     clampedReasoning === "off"
       ? undefined
-      : clampedReasoning === "max"
+      : clampedReasoning === "max" || clampedReasoning === "ultra"
         ? "xhigh"
         : clampedReasoning;
   const toolChoice = (options as OpenAICompletionsOptions | undefined)?.toolChoice;

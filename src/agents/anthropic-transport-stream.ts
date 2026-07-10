@@ -238,7 +238,7 @@ function mapThinkingLevelToEffort(
 }
 
 function clampReasoningLevel(level: ThinkingLevel): "minimal" | "low" | "medium" | "high" {
-  return level === "xhigh" || level === "max" ? "high" : level;
+  return level === "xhigh" || level === "max" || level === "ultra" ? "high" : level;
 }
 
 function resolvePositiveAnthropicMaxTokens(value: unknown): number | undefined {

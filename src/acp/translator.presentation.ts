@@ -107,6 +107,8 @@ function formatThinkingLevelName(level: string): string {
   switch (level) {
     case "xhigh":
       return "Extra High";
+    case "ultra":
+      return "Ultra";
     case "adaptive":
       return "Adaptive";
     default:

@@ -484,8 +484,10 @@ against that bundled app-server returned these public picker rows:
 | `gpt-5.4-mini`  | text, image      | low, medium, high, xhigh             |
 | `gpt-5.2`       | text, image      | low, medium, high, xhigh             |
 
-The app-server catalog can report `ultra`; OpenClaw reasoning controls currently
-expose levels through `max`.
+When the app-server catalog reports `ultra` for a model, OpenClaw exposes
+`/think ultra` for that model; models without the catalog entry (for example
+`gpt-5.6-luna`) keep `max` as their ceiling and `ultra` requests degrade to the
+strongest supported effort.
 
 Live picker rows are account-scoped and can change with the account, Codex
 catalog, or bundled version; run `/codex models` for the current list rather

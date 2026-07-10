@@ -234,7 +234,7 @@ type ResponsesLifecycleStreamOptions = Pick<
 type OpenAIResponsesProcessStreamOptions = OpenAIResponsesStreamOptions &
   FirstStreamEventInternalOptions;
 
-type ResponsesReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+type ResponsesReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
 function isResponsesReasoningEffort(
   effort: string | undefined,
@@ -513,6 +513,13 @@ export function resolveResponsesReasoningEffort<TApi extends Api>(
   const clampedReasoning = reasoning ? clampThinkingLevel(model, reasoning) : undefined;
   if (!clampedReasoning || clampedReasoning === "off") {
     return undefined;
+  }
+  if (clampedReasoning === "ultra") {
+    // Compat-driven: only models whose catalog advertises ultra send it.
+    if (supportsOpenAIReasoningEffort(model, "ultra")) {
+      return "ultra";
+    }
+    return supportsOpenAIReasoningEffort(model, "max") ? "max" : "xhigh";
   }
   if (clampedReasoning === "max") {
     return supportsOpenAIReasoningEffort(model, "max") ? "max" : "xhigh";
