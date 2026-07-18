@@ -133,4 +133,22 @@ describe("ModelsConfigSchema", () => {
 
     expect(result.success).toBe(true);
   });
+
+  it("accepts compatibility-gated session affinity headers", () => {
+    const result = ModelsConfigSchema.safeParse({
+      providers: {
+        anthropic: {
+          models: [
+            {
+              id: "claude-opus-4-7",
+              name: "Claude Opus 4.7",
+              compat: { sendSessionAffinityHeaders: true },
+            },
+          ],
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
 });
