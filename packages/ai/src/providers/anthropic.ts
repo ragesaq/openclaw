@@ -1106,6 +1106,11 @@ function createClient(
     return { client, isOAuthToken: false, serverSideFallback: false };
   }
 
+  const sessionAffinityHeaders: Record<string, string | null> =
+    sessionId && getAnthropicCompat(model).sendSessionAffinityHeaders
+      ? { "x-session-affinity": sessionId }
+      : {};
+
   // OAuth: Bearer auth, Claude Code identity headers
   if (isOAuthToken(apiKey)) {
     const client = new Anthropic({
@@ -1121,6 +1126,7 @@ function createClient(
           "user-agent": `claude-cli/${claudeCodeVersion}`,
           "x-app": "cli",
         },
+        sessionAffinityHeaders,
         model.headers,
         optionsHeaders,
       ),
@@ -1135,10 +1141,6 @@ function createClient(
   if (serverSideFallback) {
     betaFeatures.push(ANTHROPIC_SERVER_SIDE_FALLBACK_BETA);
   }
-  const sessionAffinityHeaders: Record<string, string | null> =
-    sessionId && getAnthropicCompat(model).sendSessionAffinityHeaders
-      ? { "x-session-affinity": sessionId }
-      : {};
   const client = new Anthropic({
     apiKey,
     authToken: null,

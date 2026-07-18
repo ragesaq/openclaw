@@ -238,6 +238,38 @@ describe("Anthropic provider", () => {
     ]);
   });
 
+  it.each([
+    {
+      label: "sends",
+      compat: { sendSessionAffinityHeaders: true },
+      expected: "session-123",
+    },
+    { label: "omits", compat: undefined, expected: undefined },
+  ])(
+    "$label session affinity for OAuth requests according to compatibility",
+    async ({ compat, expected }) => {
+      const stream = streamAnthropic(
+        makeAnthropicModel({ baseUrl: "http://127.0.0.1:18801", compat }),
+        {
+          messages: [{ role: "user", content: "hello", timestamp: 1 }],
+        },
+        {
+          apiKey: "sk-ant-oat01-test-token",
+          cacheRetention: "long",
+          sessionId: "session-123",
+        },
+      );
+
+      await stream.result();
+
+      await vi.waitFor(() => expect(anthropicMockState.configs).toHaveLength(1));
+      const config = anthropicMockState.configs[0] as {
+        defaultHeaders?: Record<string, string | null>;
+      };
+      expect(config.defaultHeaders?.["x-session-affinity"]).toBe(expected);
+    },
+  );
+
   it("keeps aggregate cache billing buckets out of the context total", async () => {
     const client = {
       messages: {
