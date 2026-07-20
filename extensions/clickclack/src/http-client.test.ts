@@ -542,6 +542,7 @@ describe("ClickClack HTTP client", () => {
       body: "ran bash",
       kind: "agent_tool",
       turnId: "t1",
+      nonce: "ocv1:test-tool",
     });
 
     expect(message.id).toBe("msg_9");
@@ -553,6 +554,7 @@ describe("ClickClack HTTP client", () => {
     expect(requestBodyJson(init)).toEqual({
       body: "ran bash",
       kind: "agent_tool",
+      nonce: "ocv1:test-tool",
       turn_id: "t1",
     });
   });
@@ -832,7 +834,11 @@ describe("ClickClack HTTP client", () => {
     });
 
     await expect(
-      client.createActivityMessage({ body: "orphan row", kind: "agent_commentary" }),
+      client.createActivityMessage({
+        body: "orphan row",
+        kind: "agent_commentary",
+        nonce: "ocv1:test-orphan",
+      }),
     ).rejects.toThrow("createActivityMessage requires a channelId or conversationId");
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -856,6 +862,7 @@ describe("ClickClack HTTP client", () => {
       body: "thinking about it",
       kind: "agent_commentary",
       turnId: "t1",
+      nonce: "ocv1:test-commentary",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(

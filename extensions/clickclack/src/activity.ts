@@ -1,28 +1,30 @@
 /**
- * Publishes agent activity (streamed commentary + tool progress) into
- * ClickClack as durable `agent_commentary` / `agent_tool` message rows,
- * coalesced so one logical step becomes one row instead of a row per frame.
- *
- * Ported from the clickglass agent-bridge sidecar, adapted from gateway
- * websocket frames to the in-process `replyOptions.onItemEvent` seam:
- *
- * - Commentary/reasoning arrives as cumulative text snapshots per item id.
- *   Each segment becomes one durable row: POSTed when the segment starts
- *   streaming and PATCHed (debounced) as the snapshot grows, so prose
- *   interleaves chronologically with tool rows.
- * - Tool/step items can emit several frames (start/update/complete) for the
- *   same call, sometimes with lane-prefixed ids (`tool:X`, `command:X`).
- *   Normalize the prefix away to one key per call, POST one row on the first
- *   frame, and PATCH it when a later frame carries a strictly longer body.
+ * Publishes a bounded, sanitized projection of native agent events as durable
+ * ClickClack activity rows. Classification and structural identity validation
+ * happen before any class-specific field is read.
  */
-import { buildChannelProgressDraftLine } from "openclaw/plugin-sdk/channel-outbound";
+import { createHash } from "node:crypto";
+import { sanitizeAssistantVisibleText } from "openclaw/plugin-sdk/text-chunking";
+import { ClickClackHttpError } from "./http-client.js";
 import type { ClickClackMessage, ClickClackMessageProvenance } from "./types.js";
 
-/** Debounce window for PATCHing streaming commentary snapshots. */
 const CLICKCLACK_COMMENTARY_FLUSH_MS = 700;
+const CLICKCLACK_COMMENTARY_MAX_BYTES = 8 * 1024;
+const CLICKCLACK_ACTIVITY_MAX_ROWS = 64;
+const CLICKCLACK_ACTIVITY_MAX_BODY_BYTES = 128 * 1024;
+const OVERFLOW_BODY = "Additional activity unavailable: turn limit reached";
+const OVERFLOW_BODY_BYTES = Buffer.byteLength(OVERFLOW_BODY, "utf8");
+const CLICKCLACK_CONTENT_MAX_ROWS = CLICKCLACK_ACTIVITY_MAX_ROWS - 1;
+const CLICKCLACK_CONTENT_MAX_BODY_BYTES = CLICKCLACK_ACTIVITY_MAX_BODY_BYTES - OVERFLOW_BODY_BYTES;
+const TOOL_NAME_PATTERN = /^[A-Za-z0-9._:/-]{1,128}$/u;
+const CLICKCLACK_MESSAGE_ID_PATTERN = /^msg_[0-9a-hjkmnp-tv-z]{26}$/u;
 
-/** Item event payload shape delivered by `replyOptions.onItemEvent`. */
-type ClickClackItemEventPayload = {
+const TOOL_ITEM_KINDS = new Set(["tool", "command", "command_output", "patch", "search", "api"]);
+const COMMENTARY_ITEM_KINDS = new Set(["preamble", "commentary"]);
+const PRIVATE_ITEM_KINDS = new Set(["analysis", "thinking", "reasoning"]);
+const SAFE_UNSUPPORTED_ITEM_KINDS = new Set(["plan"]);
+
+export type ClickClackItemEventPayload = {
   itemId?: string;
   toolCallId?: string;
   kind?: string;
@@ -35,124 +37,136 @@ type ClickClackItemEventPayload = {
   meta?: string;
 };
 
-/** Destination for durable activity rows (channel or DM conversation). */
 type ClickClackActivityTarget = {
+  workspaceId: string;
   channelId?: string;
   conversationId?: string;
 };
 
-/** Client subset needed by the publisher (satisfied by `createClickClackClient`). */
 type ClickClackActivityClient = {
+  findMessageByNonce(params: {
+    workspaceId: string;
+    nonce: string;
+  }): Promise<ClickClackMessage | undefined>;
   createActivityMessage(params: {
     channelId?: string;
     conversationId?: string;
     body: string;
     kind: "agent_commentary" | "agent_tool";
     turnId?: string;
+    nonce: string;
     provenance?: ClickClackMessageProvenance;
   }): Promise<ClickClackMessage>;
   updateMessageBody(messageId: string, body: string): Promise<ClickClackMessage>;
 };
 
-/** Item kinds rendered as agent_tool rows; everything else is commentary. */
-const TOOL_ITEM_KINDS = new Set(["tool", "command", "command_output", "patch", "search", "api"]);
+type NativeEventRowClass = "commentary" | "tool" | "marker" | "overflow" | "final";
 
-/** Item kinds that never become durable rows (ephemeral or plumbing lanes). */
-const SKIPPED_ITEM_KINDS = new Set(["lifecycle"]);
-
-/** Item kinds emitted as cumulative commentary snapshots. */
-const STREAMING_COMMENTARY_ITEM_KINDS = new Set([
-  "preamble",
-  "commentary",
-  "analysis",
-  "thinking",
-  "reasoning",
-]);
-
-/** Provider-specific reasoning lanes normalized into one ClickClack label. */
-const THINKING_ITEM_KINDS = new Set(["analysis", "thinking", "reasoning"]);
+export function deriveClickClackNativeEventNonce(
+  turnId: string,
+  rowClass: NativeEventRowClass,
+  stableIdentity: string | number,
+): string {
+  const preimage = JSON.stringify(["clickclack.native-event/v1", turnId, rowClass, stableIdentity]);
+  return `ocv1:${createHash("sha256").update(preimage, "utf8").digest("hex")}`;
+}
 
 function normalizedItemKind(payload: ClickClackItemEventPayload): string {
-  return payload.kind?.trim().toLowerCase() ?? "";
+  return typeof payload.kind === "string" ? payload.kind.trim().toLowerCase() : "";
 }
 
-function commentaryBody(payload: ClickClackItemEventPayload): string {
-  const text =
-    payload.progressText?.trim() || payload.summary?.trim() || payload.meta?.trim() || "";
-  if (!text) {
-    return "";
+function hasIdentityControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x1f || (codeUnit >= 0x7f && codeUnit <= 0x9f)) {
+      return true;
+    }
   }
+  return false;
+}
+
+function isValidStructuralIdentity(value: string | undefined): value is string {
+  return Boolean(
+    value &&
+    Array.from(value).length <= 256 &&
+    !hasIdentityControlCharacter(value) &&
+    Buffer.from(value, "utf8").toString("utf8") === value,
+  );
+}
+
+export function isValidClickClackNativeEventTurnId(value: string): boolean {
+  return CLICKCLACK_MESSAGE_ID_PATTERN.test(value) && isValidStructuralIdentity(value);
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) {
+    return value;
+  }
+  let result = "";
+  let bytes = 0;
+  for (const character of value) {
+    const nextBytes = Buffer.byteLength(character, "utf8");
+    if (bytes + nextBytes > maxBytes) {
+      break;
+    }
+    result += character;
+    bytes += nextBytes;
+  }
+  return result;
+}
+
+type ResolvedItemClass =
+  | { type: "drop" }
+  | { type: "commentary"; kind: "preamble" | "commentary" }
+  | { type: "tool"; kind: string }
+  | { type: "ambiguous"; kind: string; commentary: boolean }
+  | { type: "unsupported"; kind: string };
+
+function resolveItemClass(payload: ClickClackItemEventPayload): ResolvedItemClass {
   const kind = normalizedItemKind(payload);
-  if (THINKING_ITEM_KINDS.has(kind)) {
-    return `**Thinking**\n\n${text}`;
+  if (PRIVATE_ITEM_KINDS.has(kind) || kind === "lifecycle") {
+    return { type: "drop" };
   }
-  return text;
+  if (COMMENTARY_ITEM_KINDS.has(kind)) {
+    const toolCallId = typeof payload.toolCallId === "string" ? payload.toolCallId : "";
+    const itemId = typeof payload.itemId === "string" ? payload.itemId : "";
+    if (toolCallId || /^(tool|command):/u.test(itemId)) {
+      return { type: "ambiguous", kind, commentary: true };
+    }
+    return { type: "commentary", kind: kind as "preamble" | "commentary" };
+  }
+  if (TOOL_ITEM_KINDS.has(kind)) {
+    const itemId = typeof payload.itemId === "string" ? payload.itemId : "";
+    if (/^(preamble|commentary):/u.test(itemId)) {
+      return { type: "ambiguous", kind, commentary: false };
+    }
+    return { type: "tool", kind };
+  }
+  return {
+    type: "unsupported",
+    kind: SAFE_UNSUPPORTED_ITEM_KINDS.has(kind) ? kind : "unknown",
+  };
 }
 
-function activityBody(payload: ClickClackItemEventPayload): string {
-  // Reuse the shared channel progress-line renderer so ClickClack rows show
-  // the same tool name + command/argument detail as Discord/Slack/Telegram
-  // progress lines instead of a bespoke format.
-  const line = buildChannelProgressDraftLine({
-    event: "item",
-    itemId: payload.itemId,
-    toolCallId: payload.toolCallId,
-    itemKind: payload.kind,
-    title: payload.title,
-    name: payload.name,
-    phase: payload.phase,
-    status: payload.status,
-    summary: payload.summary,
-    progressText: payload.progressText,
-    meta: payload.meta,
-  })?.text?.trim();
-  if (line) {
-    return line;
-  }
-  const head = payload.name?.trim() || payload.title?.trim();
-  const text = payload.progressText?.trim() || payload.summary?.trim();
-  if (head && text) {
-    return `**${head}**\n\n${text}`;
-  }
-  if (text) {
-    return text;
-  }
-  if (head) {
-    return head;
-  }
-  return payload.status?.trim() || payload.kind?.trim() || "";
-}
-
-type CommentarySegment = {
-  messageId?: string;
+type ActivityRow = {
+  nonce: string;
+  kind: "agent_commentary" | "agent_tool";
   body: string;
+  bodyBytes: number;
+  messageId?: string;
+};
+
+type CommentaryRow = ActivityRow & {
   dirty: boolean;
   timer?: ReturnType<typeof setTimeout>;
 };
 
-type ToolRow = {
-  messageId?: string;
-  body: string;
-  /** Body last sent to ClickClack; skips redundant PATCHes after late reads. */
-  sentBody?: string;
-};
-
-/** Publisher wired into one agent turn via `replyOptions.onItemEvent`. */
 export type ClickClackActivityPublisher = {
   onItemEvent: (payload: ClickClackItemEventPayload) => void;
-  /**
-   * Records the resolved model/thinking for this turn (from
-   * `replyOptions.onModelSelected`); stamped onto subsequent activity rows.
-   */
   setProvenance: (provenance: ClickClackMessageProvenance) => void;
-  /** Flushes pending commentary and awaits all outstanding POST/PATCH work. */
   finalize: () => Promise<void>;
 };
 
-/**
- * Creates a per-turn activity publisher. Publishing is best-effort: transport
- * failures are reported through `onError` and never interrupt the reply turn.
- */
 export function createClickClackActivityPublisher(params: {
   client: ClickClackActivityClient;
   target: ClickClackActivityTarget;
@@ -161,151 +175,320 @@ export function createClickClackActivityPublisher(params: {
   onError?: (error: unknown) => void;
 }): ClickClackActivityPublisher {
   const flushMs = params.flushMs ?? CLICKCLACK_COMMENTARY_FLUSH_MS;
-  const commentaryByItem = new Map<string, CommentarySegment>();
-  const toolRows = new Map<string, ToolRow>();
+  const commentaryRows = new Map<string, CommentaryRow>();
+  const toolRows = new Map<string, ActivityRow>();
+  const markerIdentities = new Set<string>();
   let provenance: ClickClackMessageProvenance | undefined;
-  // Single promise chain so POST/PATCH ordering matches frame arrival order.
+  let contentRowCount = 0;
+  let contentBodyBytes = 0;
+  let overflowQueued = false;
+  let publicationDisabled = false;
   let chain: Promise<void> = Promise.resolve();
 
+  const reportError = (error: unknown): void => {
+    const status = error instanceof ClickClackHttpError ? error.status : undefined;
+    if (status === 400 || status === 403) {
+      publicationDisabled = true;
+    }
+    params.onError?.(
+      new Error(
+        status === undefined
+          ? "ClickClack activity request failed"
+          : `ClickClack activity request failed with status ${status}`,
+      ),
+    );
+  };
+
   const enqueue = (work: () => Promise<void>): Promise<void> => {
-    chain = chain.then(work).catch((error: unknown) => {
-      params.onError?.(error);
-    });
+    chain = chain
+      .then(async () => {
+        if (!publicationDisabled) {
+          await work();
+        }
+      })
+      .catch((error: unknown) => {
+        reportError(error);
+      });
     return chain;
   };
 
-  const postRow = (kind: "agent_commentary" | "agent_tool", body: string) =>
-    params.client.createActivityMessage({
+  const persistRow = async (row: ActivityRow): Promise<void> => {
+    const existing = await params.client.findMessageByNonce({
+      workspaceId: params.target.workspaceId,
+      nonce: row.nonce,
+    });
+    if (existing) {
+      row.messageId = existing.id;
+      if (existing.body !== row.body) {
+        await params.client.updateMessageBody(existing.id, row.body);
+      }
+      return;
+    }
+    const posted = await params.client.createActivityMessage({
       channelId: params.target.channelId,
       conversationId: params.target.conversationId,
-      body,
-      kind,
+      body: row.body,
+      kind: row.kind,
       turnId: params.turnId,
+      nonce: row.nonce,
       provenance,
     });
-
-  const flushCommentary = (segmentKey: string): Promise<void> => {
-    const segment = commentaryByItem.get(segmentKey);
-    if (!segment) {
-      return Promise.resolve();
-    }
-    if (segment.timer) {
-      clearTimeout(segment.timer);
-      segment.timer = undefined;
-    }
-    if (!segment.dirty || !segment.body.trim()) {
-      return Promise.resolve();
-    }
-    segment.dirty = false;
-    const body = segment.body;
-    return enqueue(async () => {
-      if (segment.messageId) {
-        await params.client.updateMessageBody(segment.messageId, body);
-        return;
-      }
-      const posted = await postRow("agent_commentary", body);
-      segment.messageId = posted.id;
-    });
+    row.messageId = posted.id;
   };
 
-  const flushAllCommentary = (): Promise<void> => {
-    const flushes = [...commentaryByItem.keys()].map((key) => flushCommentary(key));
-    return Promise.all(flushes).then(() => undefined);
-  };
-
-  const handleCommentary = (payload: ClickClackItemEventPayload): void => {
-    const body = commentaryBody(payload);
-    if (!body.trim()) {
+  const queueOverflow = (): void => {
+    if (overflowQueued) {
       return;
     }
-    const key = payload.itemId?.trim() || "turn";
-    let segment = commentaryByItem.get(key);
-    if (!segment) {
-      segment = { body: "", dirty: false };
-      commentaryByItem.set(key, segment);
-    }
-    // Snapshots are cumulative per item; never shrink the row body on a
-    // shorter (stale or whitespace-normalized) frame, and skip identical
-    // snapshots entirely so out-of-order frames cannot queue redundant
-    // PATCHes.
-    if (body.length < segment.body.length || body === segment.body) {
-      return;
-    }
-    segment.body = body;
-    segment.dirty = true;
-    if (!segment.timer) {
-      segment.timer = setTimeout(() => {
-        segment.timer = undefined;
-        void flushCommentary(key);
-      }, flushMs);
-    }
+    overflowQueued = true;
+    const row: ActivityRow = {
+      nonce: deriveClickClackNativeEventNonce(params.turnId, "overflow", "turn_limit"),
+      kind: "agent_commentary",
+      body: OVERFLOW_BODY,
+      bodyBytes: OVERFLOW_BODY_BYTES,
+    };
+    void enqueue(async () => persistRow(row));
   };
 
-  const toolRowKey = (payload: ClickClackItemEventPayload): string => {
-    // toolCallId is an opaque identifier: use it untouched when present.
-    // itemId carries a lane/lifecycle prefix (`tool:X`, `command:X`) on some
-    // frames and appears bare on others, so normalize only itemId to give
-    // all frames of one call a shared key.
-    const toolCallId = payload.toolCallId?.trim();
-    if (toolCallId) {
+  const reserveNewRow = (bodyBytes: number): boolean => {
+    if (
+      contentRowCount >= CLICKCLACK_CONTENT_MAX_ROWS ||
+      contentBodyBytes + bodyBytes > CLICKCLACK_CONTENT_MAX_BODY_BYTES
+    ) {
+      queueOverflow();
+      return false;
+    }
+    contentRowCount += 1;
+    contentBodyBytes += bodyBytes;
+    return true;
+  };
+
+  const reserveRowUpdate = (row: ActivityRow, bodyBytes: number): boolean => {
+    const nextTotal = contentBodyBytes - row.bodyBytes + bodyBytes;
+    if (nextTotal > CLICKCLACK_CONTENT_MAX_BODY_BYTES) {
+      queueOverflow();
+      return false;
+    }
+    contentBodyBytes = nextTotal;
+    row.bodyBytes = bodyBytes;
+    return true;
+  };
+
+  const emitMarker = (
+    stableIdentity: string,
+    body: string,
+    rowClass: "marker" | "overflow" = "marker",
+  ): void => {
+    if (markerIdentities.has(stableIdentity)) {
+      return;
+    }
+    markerIdentities.add(stableIdentity);
+    const bodyBytes = Buffer.byteLength(body, "utf8");
+    if (!reserveNewRow(bodyBytes)) {
+      return;
+    }
+    const row: ActivityRow = {
+      nonce: deriveClickClackNativeEventNonce(params.turnId, rowClass, stableIdentity),
+      kind: "agent_commentary",
+      body,
+      bodyBytes,
+    };
+    void enqueue(async () => persistRow(row));
+  };
+
+  const resolveCommentaryIdentity = (
+    payload: ClickClackItemEventPayload,
+    kind: string,
+  ): string | undefined => {
+    const itemId = typeof payload.itemId === "string" ? payload.itemId : undefined;
+    if (isValidStructuralIdentity(itemId)) {
+      return itemId;
+    }
+    const reason = itemId ? "invalid_identity" : "missing_identity";
+    emitMarker(`${reason}:${kind}`, "Activity unavailable: missing stable identity");
+    return undefined;
+  };
+
+  const resolveToolIdentity = (
+    payload: ClickClackItemEventPayload,
+    kind: string,
+  ): string | undefined => {
+    const toolCallId = typeof payload.toolCallId === "string" ? payload.toolCallId : undefined;
+    const itemId = typeof payload.itemId === "string" ? payload.itemId : undefined;
+    if (isValidStructuralIdentity(toolCallId)) {
       return toolCallId;
     }
-    const itemId = payload.itemId?.trim() ?? "";
-    return itemId.replace(/^(tool|command):/, "");
+    if (isValidStructuralIdentity(itemId)) {
+      return itemId;
+    }
+    const reason = toolCallId || itemId ? "invalid_identity" : "missing_identity";
+    emitMarker(`${reason}:${kind}`, "Activity unavailable: missing stable identity");
+    return undefined;
   };
 
-  const handleDiscreteItem = (payload: ClickClackItemEventPayload): void => {
-    const body = activityBody(payload);
-    if (!body) {
+  const flushCommentary = (identity: string): Promise<void> => {
+    const row = commentaryRows.get(identity);
+    if (!row) {
+      return Promise.resolve();
+    }
+    if (row.timer) {
+      clearTimeout(row.timer);
+      row.timer = undefined;
+    }
+    if (!row.dirty) {
+      return Promise.resolve();
+    }
+    row.dirty = false;
+    return enqueue(async () => persistRow(row));
+  };
+
+  const flushAllCommentary = (): Promise<void> =>
+    Promise.all([...commentaryRows.keys()].map((identity) => flushCommentary(identity))).then(
+      () => undefined,
+    );
+
+  const handleCommentary = (
+    payload: ClickClackItemEventPayload,
+    itemClass: Extract<ResolvedItemClass, { type: "commentary" }>,
+  ): void => {
+    const identity = resolveCommentaryIdentity(payload, itemClass.kind);
+    if (!identity) {
       return;
     }
-    const kind = TOOL_ITEM_KINDS.has(payload.kind?.trim().toLowerCase() ?? "")
-      ? ("agent_tool" as const)
-      : ("agent_commentary" as const);
-    // Flush streaming prose first so the commentary row lands before the
-    // step row it precedes chronologically.
+    const rawProgressText = typeof payload.progressText === "string" ? payload.progressText : "";
+    const sanitized = sanitizeAssistantVisibleText(rawProgressText);
+    const body = sanitized
+      ? truncateUtf8(sanitized, CLICKCLACK_COMMENTARY_MAX_BYTES)
+      : "Commentary unavailable";
+    const bodyBytes = Buffer.byteLength(body, "utf8");
+    const existing = commentaryRows.get(identity);
+    if (existing) {
+      if (bodyBytes < existing.bodyBytes || body === existing.body) {
+        return;
+      }
+      if (!reserveRowUpdate(existing, bodyBytes)) {
+        return;
+      }
+      existing.body = body;
+      existing.dirty = true;
+      if (!existing.timer) {
+        existing.timer = setTimeout(() => {
+          existing.timer = undefined;
+          void flushCommentary(identity);
+        }, flushMs);
+      }
+      return;
+    }
+    if (!reserveNewRow(bodyBytes)) {
+      return;
+    }
+    const row: CommentaryRow = {
+      nonce: deriveClickClackNativeEventNonce(params.turnId, "commentary", identity),
+      kind: "agent_commentary",
+      body,
+      bodyBytes,
+      dirty: true,
+    };
+    commentaryRows.set(identity, row);
+    row.timer = setTimeout(() => {
+      row.timer = undefined;
+      void flushCommentary(identity);
+    }, flushMs);
+  };
+
+  const normalizeToolStatus = (payload: ClickClackItemEventPayload): string => {
+    const status = typeof payload.status === "string" ? payload.status.trim().toLowerCase() : "";
+    const phase = typeof payload.phase === "string" ? payload.phase.trim().toLowerCase() : "";
+    if (status === "failed" || status === "error") {
+      return "failed";
+    }
+    if (status === "cancelled" || status === "canceled") {
+      return "cancelled";
+    }
+    if (
+      status === "completed" ||
+      status === "succeeded" ||
+      status === "success" ||
+      phase === "end" ||
+      phase === "result" ||
+      phase === "completed"
+    ) {
+      return "completed";
+    }
+    return "started";
+  };
+
+  const handleTool = (
+    payload: ClickClackItemEventPayload,
+    itemClass: Extract<ResolvedItemClass, { type: "tool" }>,
+  ): void => {
+    const identity = resolveToolIdentity(payload, itemClass.kind);
+    if (!identity) {
+      return;
+    }
+    const candidateName = typeof payload.name === "string" ? payload.name.trim() : "";
+    const displayName = TOOL_NAME_PATTERN.test(candidateName) ? candidateName : "tool";
+    const status = normalizeToolStatus(payload);
+    const body = [
+      `Tool: ${displayName}`,
+      `Status: ${status}`,
+      "Arguments: unavailable by policy",
+      `Result: ${status === "started" ? "pending" : "unavailable by policy"}`,
+    ].join("\n");
+    const bodyBytes = Buffer.byteLength(body, "utf8");
+
     void flushAllCommentary();
-    const key = `${kind}:${toolRowKey(payload)}`;
-    const existing = toolRows.get(key);
-    if (!existing || !toolRowKey(payload)) {
-      const row: ToolRow = { body };
-      if (toolRowKey(payload)) {
-        toolRows.set(key, row);
+    const existing = toolRows.get(identity);
+    if (existing) {
+      if (existing.body === body || !reserveRowUpdate(existing, bodyBytes)) {
+        return;
       }
-      void enqueue(async () => {
-        // Late read is intentional: if the body was upgraded before this POST
-        // ran, post the richer body directly and skip the follow-up PATCH.
-        const posted = await postRow(kind, row.body);
-        row.messageId = posted.id;
-        row.sentBody = row.body;
-      });
+      existing.body = body;
+      void enqueue(async () => persistRow(existing));
       return;
     }
-    // Only upgrade the row when the new frame says strictly more (longer
-    // body), so a bare lane echo like "read" never clobbers a summary.
-    if (body.length <= existing.body.length) {
+    if (!reserveNewRow(bodyBytes)) {
       return;
     }
-    existing.body = body;
-    void enqueue(async () => {
-      if (existing.messageId && existing.body !== existing.sentBody) {
-        await params.client.updateMessageBody(existing.messageId, existing.body);
-        existing.sentBody = existing.body;
-      }
-    });
+    const row: ActivityRow = {
+      nonce: deriveClickClackNativeEventNonce(params.turnId, "tool", identity),
+      kind: "agent_tool",
+      body,
+      bodyBytes,
+    };
+    toolRows.set(identity, row);
+    void enqueue(async () => persistRow(row));
   };
 
   return {
     onItemEvent: (payload) => {
-      const kind = normalizedItemKind(payload);
-      if (STREAMING_COMMENTARY_ITEM_KINDS.has(kind)) {
-        handleCommentary(payload);
+      if (publicationDisabled) {
         return;
       }
-      if (SKIPPED_ITEM_KINDS.has(kind)) {
-        return;
+      const itemClass = resolveItemClass(payload);
+      switch (itemClass.type) {
+        case "drop":
+          return;
+        case "commentary":
+          handleCommentary(payload, itemClass);
+          return;
+        case "tool":
+          handleTool(payload, itemClass);
+          return;
+        case "ambiguous":
+          emitMarker(
+            `ambiguous_class:${itemClass.kind}`,
+            itemClass.commentary
+              ? "Commentary unavailable"
+              : "Activity unavailable: unsupported event kind",
+          );
+          return;
+        case "unsupported":
+          emitMarker(
+            `unsupported_kind:${itemClass.kind}`,
+            "Activity unavailable: unsupported event kind",
+          );
       }
-      handleDiscreteItem(payload);
     },
     setProvenance: (next) => {
       provenance = next;

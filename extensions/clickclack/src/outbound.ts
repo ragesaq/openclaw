@@ -14,6 +14,10 @@ import {
 } from "openclaw/plugin-sdk/outbound-media";
 import { sanitizeAssistantVisibleText } from "openclaw/plugin-sdk/text-chunking";
 import { resolveClickClackAccount } from "./accounts.js";
+import {
+  deriveClickClackNativeEventNonce,
+  isValidClickClackNativeEventTurnId,
+} from "./activity.js";
 import { createClickClackClient, type ClickClackClient } from "./http-client.js";
 import { resolveChannelId, resolveWorkspaceId } from "./resolve.js";
 import { parseClickClackTarget } from "./target.js";
@@ -99,6 +103,23 @@ function textDeliveryNonce(params: {
   return digest ? `openclaw-text:${digest}` : undefined;
 }
 
+function nativeFinalDeliveryNonce(params: {
+  agentActivity: boolean;
+  replyToId?: string | number | null;
+  deliveryPartIndex?: number;
+}): string | undefined {
+  if (
+    !params.agentActivity ||
+    (params.deliveryPartIndex !== undefined && params.deliveryPartIndex !== 0)
+  ) {
+    return undefined;
+  }
+  const turnId = params.replyToId == null ? "" : String(params.replyToId);
+  return isValidClickClackNativeEventTurnId(turnId)
+    ? deriveClickClackNativeEventNonce(turnId, "final", 0)
+    : undefined;
+}
+
 function createDispatchOnce(onPlatformSendDispatch?: () => Promise<void>): () => Promise<void> {
   let dispatched = false;
   return async () => {
@@ -181,6 +202,16 @@ export async function sendClickClackText(params: {
   const { account, client } = createOutboundContext(params);
   const workspaceId = await resolveWorkspaceId(client, account.workspace);
   const dispatch = createDispatchOnce(params.onPlatformSendDispatch);
+  const nonce =
+    nativeFinalDeliveryNonce({
+      agentActivity: account.agentActivity,
+      replyToId: params.replyToId,
+      deliveryPartIndex: params.deliveryPartIndex,
+    }) ??
+    textDeliveryNonce({
+      deliveryQueueId: params.deliveryQueueId,
+      deliveryPartIndex: params.deliveryPartIndex,
+    });
   const message = await createTargetMessage({
     client,
     workspaceId,
@@ -189,10 +220,7 @@ export async function sendClickClackText(params: {
     threadId: params.threadId,
     replyToId: params.replyToId,
     provenance: params.provenance,
-    nonce: textDeliveryNonce({
-      deliveryQueueId: params.deliveryQueueId,
-      deliveryPartIndex: params.deliveryPartIndex,
-    }),
+    nonce,
     onPlatformSendDispatch: dispatch,
   });
   return message.id;
@@ -231,6 +259,12 @@ export async function sendClickClackMedia(params: {
       });
   const { account, client } = createOutboundContext(params);
   const workspaceId = await resolveWorkspaceId(client, account.workspace);
+  const messageNonce =
+    nativeFinalDeliveryNonce({
+      agentActivity: account.agentActivity,
+      replyToId: params.replyToId,
+      deliveryPartIndex: params.deliveryPartIndex,
+    }) ?? nonces.message;
   const persistedUpload = nonces.upload
     ? await client.findUploadByNonce({ workspaceId, nonce: nonces.upload })
     : undefined;
@@ -269,7 +303,7 @@ export async function sendClickClackMedia(params: {
     text,
     threadId: params.threadId,
     replyToId: params.replyToId,
-    nonce: nonces.message,
+    nonce: messageNonce,
     onPlatformSendDispatch: dispatch,
   });
   // Do not report delivery until ClickClack has durably attached the upload and
@@ -317,10 +351,16 @@ export async function reconcileClickClackUnknownSend(
   const payload = ctx.payloads[0];
   const caption = ctx.renderedBatchPlan?.items[0]?.text ?? payload?.text ?? "";
   if (mediaUrls.length === 0) {
-    const nonce = textDeliveryNonce({
-      deliveryQueueId: ctx.queueId,
-      deliveryPartIndex: 0,
-    });
+    const nonce =
+      nativeFinalDeliveryNonce({
+        agentActivity: account.agentActivity,
+        replyToId: effectiveReplyToId,
+        deliveryPartIndex: 0,
+      }) ??
+      textDeliveryNonce({
+        deliveryQueueId: ctx.queueId,
+        deliveryPartIndex: 0,
+      });
     if (!nonce || !sanitizeAssistantVisibleText(caption)) {
       return { status: "not_sent" };
     }
@@ -346,9 +386,15 @@ export async function reconcileClickClackUnknownSend(
       if (!nonces.upload || !nonces.message) {
         throw new Error("ClickClack durable media nonces were not derived");
       }
+      const messageNonce =
+        nativeFinalDeliveryNonce({
+          agentActivity: account.agentActivity,
+          replyToId: effectiveReplyToId,
+          deliveryPartIndex: index,
+        }) ?? nonces.message;
       const [upload, message] = await Promise.all([
         client.findUploadByNonce({ workspaceId, nonce: nonces.upload }),
-        client.findMessageByNonce({ workspaceId, nonce: nonces.message }),
+        client.findMessageByNonce({ workspaceId, nonce: messageNonce }),
       ]);
       return {
         upload,

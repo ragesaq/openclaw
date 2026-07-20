@@ -491,6 +491,7 @@ export function createClickClackClient(options: ClientOptions) {
       body: string;
       kind: "agent_commentary" | "agent_tool";
       turnId?: string;
+      nonce: string;
       provenance?: ClickClackMessageProvenance;
     }): Promise<ClickClackMessage> => {
       if (!params.channelId && !params.conversationId) {
@@ -505,6 +506,7 @@ export function createClickClackClient(options: ClientOptions) {
           body: params.body,
           kind: params.kind,
           turn_id: params.turnId,
+          nonce: params.nonce,
           ...provenanceFields(params.provenance),
         }),
       });

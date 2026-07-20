@@ -1,5 +1,6 @@
 // Covers ClickClack outbound routing and sender-boundary assistant text sanitization.
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { deriveClickClackNativeEventNonce } from "./activity.js";
 import {
   reconcileClickClackUnknownSend,
   sendClickClackMedia,
@@ -32,10 +33,16 @@ vi.mock("./accounts.js", () => ({
     baseUrl: "https://clickclack.example",
     token: "test-token-placeholder",
     workspace: "wsp_1",
+    agentActivity: true,
   }),
 }));
 
 vi.mock("./http-client.js", () => ({
+  ClickClackHttpError: class ClickClackHttpError extends Error {
+    constructor(readonly status: number) {
+      super(`ClickClack ${status}`);
+    }
+  },
   createClickClackClient: (options: unknown) => {
     createClientOptions(options);
     return {
@@ -198,6 +205,37 @@ describe("sendClickClackText routing", () => {
       }),
     );
   });
+
+  it("converges direct and queued final delivery on the native turn nonce", async () => {
+    const turnId = "msg_01arz3ndektsv4rrffq69g5fav";
+    const expectedNonce = deriveClickClackNativeEventNonce(turnId, "final", 0);
+
+    await sendClickClackText({
+      cfg,
+      to: "channel:general",
+      text: "direct final",
+      replyToId: turnId,
+    });
+    expect(createChannelMessage).toHaveBeenLastCalledWith(
+      "general",
+      "direct final",
+      expect.objectContaining({ nonce: expectedNonce }),
+    );
+
+    await sendClickClackText({
+      cfg,
+      to: "channel:general",
+      text: "queued final",
+      replyToId: turnId,
+      deliveryQueueId: "queue-final",
+      deliveryPartIndex: 0,
+    });
+    expect(createChannelMessage).toHaveBeenLastCalledWith(
+      "general",
+      "queued final",
+      expect.objectContaining({ nonce: expectedNonce }),
+    );
+  });
 });
 
 describe("sendClickClackMedia", () => {
@@ -281,6 +319,28 @@ describe("sendClickClackMedia", () => {
     );
     expect(attachUpload).toHaveBeenCalledWith("msg_out", "upl_1");
     expect(messageId).toBe("msg_out");
+  });
+
+  it("uses the native final nonce for the first media delivery of an activity turn", async () => {
+    const turnId = "msg_01arz3ndektsv4rrffq69g5fav";
+
+    await sendClickClackMedia({
+      cfg,
+      to: "channel:general",
+      text: "Final artifact",
+      mediaUrl: "/workspace/viewer-proof.ts",
+      replyToId: turnId,
+      deliveryQueueId: "queue-final-media",
+      deliveryPartIndex: 0,
+    });
+
+    expect(createChannelMessage).toHaveBeenLastCalledWith(
+      "general",
+      "Final artifact",
+      expect.objectContaining({
+        nonce: deriveClickClackNativeEventNonce(turnId, "final", 0),
+      }),
+    );
   });
 
   it("routes explicit thread targets before attaching the upload", async () => {
@@ -531,6 +591,28 @@ describe("reconcileClickClackUnknownSend", () => {
 
     expect(result).toEqual({ status: "not_sent" });
     expect(createChannelMessage).not.toHaveBeenCalled();
+  });
+
+  it("reconciles an activity turn final through its native nonce", async () => {
+    const turnId = "msg_01arz3ndektsv4rrffq69g5fav";
+    findMessageByNonce.mockResolvedValueOnce({ id: "msg_final" });
+
+    const result = await reconcileClickClackUnknownSend({
+      cfg,
+      queueId: "queue-final",
+      channel: "clickclack",
+      to: "channel:general",
+      enqueuedAt: 1,
+      retryCount: 0,
+      effectiveReplyToId: turnId,
+      payloads: [{ text: "recovered final" }],
+    });
+
+    expect(result.status).toBe("sent");
+    expect(findMessageByNonce).toHaveBeenCalledWith({
+      workspaceId: "wsp_1",
+      nonce: deriveClickClackNativeEventNonce(turnId, "final", 0),
+    });
   });
 
   it("proves media was not sent when its durable message is absent", async () => {

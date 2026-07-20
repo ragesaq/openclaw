@@ -117,6 +117,7 @@ id (`wsp_...`), slug, or name; the gateway resolves it to the id at startup.
 | `toolsAllow`            | none                | Tool allowlist for agent replies from this account.                                     |
 | `model`, `systemPrompt` | none                | Used by `replyMode: "model"` completions.                                               |
 | `commandMenu`           | `true`              | Publish native commands to ClickClack composer autocomplete.                            |
+| `agentActivity`         | `false`             | Publish sanitized durable commentary and tool rows for agent turns.                     |
 | `reconnectMs`           | `1500`              | Realtime reconnect delay (100 to 60000).                                                |
 | `discussions`           | disabled            | Managed per-session channel settings; see [Session discussions](#session-discussions).  |
 
@@ -380,8 +381,12 @@ Requirements and behavior:
 
 - **Off by default.** Stock setups and older ClickClack servers are untouched.
 - **Requires the `agent_activity:write` token scope.** This scope is separate from `bot:write` and is not inherited by it; create the bot token with `--scopes bot:write,agent_activity:write` (or grant the scope to an existing token) before enabling the option.
-- **Best-effort degradation.** If the token lacks `agent_activity:write` or the server rejects activity writes, failures are logged and the final reply still delivers normally; no activity rows appear.
-- Rows are grouped per turn (`turn_id`), coalesced so one logical step is one row, and tool rows use the same progress formatting as Discord/Slack/Telegram (tool name plus command detail).
+- **Best-effort degradation.** If the server returns 400 or 403 for an activity write, OpenClaw disables later activity writes for that turn, redacts the response detail from logs, and still delivers the final reply normally.
+- **Sanitized projection only.** Commentary rows contain assistant-visible `preamble` or `commentary` text after the normal visible-text sanitizer. `analysis`, `thinking`, `reasoning`, lifecycle events, tool arguments, tool results, summaries, metadata, and raw event payloads are never persisted.
+- **Bounded output.** Commentary updates coalesce by stable item identity and cap at 8 KiB per row. Each turn writes at most 64 activity rows and 128 KiB of activity bodies, including one deterministic overflow marker.
+- **Deterministic replay.** Every row is keyed by a structural nonce derived from the inbound message id, row class, and stable event identity. OpenClaw looks up that nonce before every create or patch, so retries and lost acknowledgements converge instead of duplicating rows.
+- **Safe tool rows.** Tool rows expose only a validated tool display name, normalized status, and fixed `Arguments: unavailable by policy` / `Result: unavailable by policy` text. They never include command detail or provider payload fields.
+- **Final-message convergence.** Direct delivery, durable-queue delivery, and unknown-send recovery use the same structural final nonce for the first reply part, preventing a crash boundary from duplicating the final answer.
 - **Attribution metadata.** Agent-authored posts (activity rows and the final reply) carry `author_model` and `author_thinking` fields resolved from the actual model used for the turn (including after fallback). Servers that do not define these columns ignore the unknown JSON fields; servers that persist them can answer "which model said this line, at which thinking level" per message.
 
 ## Targets

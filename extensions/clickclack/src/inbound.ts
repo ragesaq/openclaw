@@ -7,7 +7,11 @@ import { deriveDurableFinalDeliveryRequirements } from "openclaw/plugin-sdk/chan
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import { resolveClickClackInboundAccess, type ClickClackInboundAccess } from "./access.js";
-import { createClickClackActivityPublisher, type ClickClackActivityPublisher } from "./activity.js";
+import {
+  createClickClackActivityPublisher,
+  isValidClickClackNativeEventTurnId,
+  type ClickClackActivityPublisher,
+} from "./activity.js";
 import { resolveClickClackDiscussionRoute } from "./discussions/routing.js";
 import { createClickClackClient } from "./http-client.js";
 import { sendClickClackText } from "./outbound.js";
@@ -21,7 +25,6 @@ import type {
 } from "./types.js";
 
 const CHANNEL_ID = "clickclack" as const;
-const CLICKCLACK_MESSAGE_ID_PATTERN = /^msg_[0-9a-hjkmnp-tv-z]{26}$/u;
 
 function hasClickClackReplyMedia(payload: {
   mediaUrl?: string;
@@ -34,7 +37,7 @@ function hasClickClackReplyMedia(payload: {
 }
 
 function resolveClickClackAgentRunId(messageId: string): string | undefined {
-  return CLICKCLACK_MESSAGE_ID_PATTERN.test(messageId) ? `${CHANNEL_ID}:${messageId}` : undefined;
+  return isValidClickClackNativeEventTurnId(messageId) ? `${CHANNEL_ID}:${messageId}` : undefined;
 }
 
 function resolveAccountAgentRoute(params: {
@@ -211,9 +214,14 @@ export async function handleClickClackInbound(params: {
   // break final text delivery.
   // Resolved model/thinking for this turn (from onModelSelected); stamped as
   // attribution metadata onto activity rows and the final reply message.
+  const runId = resolveClickClackAgentRunId(message.id);
   let turnProvenance: ClickClackMessageProvenance | undefined;
   let activity: ClickClackActivityPublisher | undefined;
-  if (params.account.agentActivity && (message.channel_id || message.direct_conversation_id)) {
+  if (
+    runId &&
+    params.account.agentActivity &&
+    (message.channel_id || message.direct_conversation_id)
+  ) {
     activity = createClickClackActivityPublisher({
       client: createClickClackClient({
         baseUrl: params.account.baseUrl,
@@ -221,8 +229,11 @@ export async function handleClickClackInbound(params: {
         correlationId: params.correlationId,
       }),
       target: message.channel_id
-        ? { channelId: message.channel_id }
-        : { conversationId: message.direct_conversation_id },
+        ? { workspaceId: message.workspace_id, channelId: message.channel_id }
+        : {
+            workspaceId: message.workspace_id,
+            conversationId: message.direct_conversation_id,
+          },
       turnId: message.id,
       onError: (error) => {
         runtime.logging
@@ -284,7 +295,6 @@ export async function handleClickClackInbound(params: {
       ...(discussionRoute ? { GroupSystemPrompt: discussionRoute.systemPrompt } : {}),
     },
   });
-  const runId = resolveClickClackAgentRunId(message.id);
   const activityReplyOptions = activity
     ? {
         onModelSelected: (ctx: { provider: string; model: string; thinkLevel?: string }) => {
