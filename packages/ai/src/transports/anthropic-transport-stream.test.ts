@@ -4075,6 +4075,31 @@ describe("anthropic transport stream", () => {
     }
   });
 
+  it.each(["low", "medium", "high", "xhigh", "max"] as const)(
+    "sends Claude Opus 5 %s as the matching native effort",
+    async (reasoning) => {
+      const model = makeAnthropicTransportModel({
+        id: "claude-opus-5",
+        name: "Claude Opus 5",
+        maxTokens: 128_000,
+      });
+
+      await runTransportStream(
+        model,
+        { messages: [{ role: "user", content: "Think carefully." }] } as AnthropicStreamContext,
+        {
+          apiKey: "sk-ant-api",
+          reasoning,
+        } as AnthropicStreamOptions,
+      );
+
+      expect(latestAnthropicRequest().payload).toMatchObject({
+        thinking: { type: "adaptive", display: "summarized" },
+        output_config: { effort: reasoning },
+      });
+    },
+  );
+
   it.each([
     {
       name: "defaults to adaptive high",

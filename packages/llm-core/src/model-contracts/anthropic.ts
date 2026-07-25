@@ -44,9 +44,19 @@ export const CLAUDE_SONNET_5_THINKING_PROFILE = {
   defaultLevel: "high",
 } as const;
 
-// Opus 5 shares Sonnet 5's surface: adaptive-by-default, full effort range,
-// and thinking may still be disabled (at effort <= high), so "off" stays valid.
-export const CLAUDE_OPUS_5_THINKING_PROFILE = CLAUDE_SONNET_5_THINKING_PROFILE;
+// Opus 5 exposes explicit thinking-off plus five native effort values.
+// Enabled thinking uses the adaptive wire type; adaptive is not an effort level.
+export const CLAUDE_OPUS_5_THINKING_PROFILE = {
+  levels: [
+    { id: "off" },
+    { id: "low" },
+    { id: "medium" },
+    { id: "high" },
+    { id: "xhigh" },
+    { id: "max" },
+  ],
+  defaultLevel: "high",
+} as const;
 
 /** Resolve the canonical normalized Claude model id for one runtime model ref. */
 export function resolveClaudeModelIdentity(ref: ClaudeModelRef): string {

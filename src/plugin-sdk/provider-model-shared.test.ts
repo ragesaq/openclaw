@@ -435,10 +435,10 @@ describe("resolveClaudeThinkingProfile", () => {
     expect(supportsClaudeNativeXhighEffort({ id: "anthropic/claude-opus-4-70" })).toBe(false);
   });
 
-  it("defaults Opus 5 to high adaptive thinking with native effort levels", () => {
+  it("exposes Opus 5 thinking-off plus its five native effort controls", () => {
     const profile = resolveClaudeThinkingProfile("claude-opus-5");
     expectFields(profile, { defaultLevel: "high" });
-    expectLevelIdsInclude(profile, ["off", "xhigh", "adaptive", "max"]);
+    expect(readLevelIds(profile)).toEqual(["off", "low", "medium", "high", "xhigh", "max"]);
   });
 
   it("leaves Opus 4.8 thinking off by default with xhigh/adaptive/max options", () => {

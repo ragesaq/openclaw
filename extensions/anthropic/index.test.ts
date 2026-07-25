@@ -705,16 +705,7 @@ describe("anthropic provider replay hooks", () => {
       provider: "anthropic",
       modelId: "claude-opus-5",
     } as never);
-    expect(levelIds(profile)).toStrictEqual([
-      "off",
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "adaptive",
-      "max",
-    ]);
+    expect(levelIds(profile)).toStrictEqual(["off", "low", "medium", "high", "xhigh", "max"]);
     expect(requireRecord(profile, "Opus 5 thinking profile").defaultLevel).toBe("high");
 
     const normalized = provider.normalizeResolvedModel?.({
