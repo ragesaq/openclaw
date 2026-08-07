@@ -283,6 +283,111 @@ describe("ClickClack discussion service contracts", () => {
     expect(harness.createChannel).not.toHaveBeenCalled();
   });
 
+  it("selects a managed-only discussion account by the session agent", async () => {
+    const harness = createHarness({ label: "Managed account" });
+    harness.config.channels!.clickclack = {
+      accounts: {
+        compass: {
+          enabled: true,
+          managedOnly: true,
+          agentId: "compass",
+          baseUrl: "https://clickclack-compass.example",
+          token: "compass-token",
+          workspace: "team",
+          discussions: { enabled: true },
+        },
+        forge: {
+          enabled: true,
+          managedOnly: true,
+          agentId: "forge",
+          baseUrl: "https://clickclack-forge.example",
+          token: "forge-token",
+          workspace: "team",
+          discussions: { enabled: true },
+        },
+      },
+    };
+
+    await expect(harness.service.open("agent:compass:managed")).resolves.toMatchObject({
+      state: "open",
+    });
+    await expect(harness.service.open("agent:forge:managed")).resolves.toMatchObject({
+      state: "open",
+    });
+
+    expect(harness.store.lookup("agent:compass:managed")).toMatchObject({
+      accountId: "compass",
+      agentId: "compass",
+    });
+    expect(harness.store.lookup("agent:forge:managed")).toMatchObject({
+      accountId: "forge",
+      agentId: "forge",
+    });
+  });
+
+  it("keeps a declared managed-only account from falling back when unavailable", async () => {
+    const harness = createHarness({ label: "Unavailable managed account" });
+    harness.config.channels!.clickclack = {
+      accounts: {
+        compass: {
+          enabled: false,
+          managedOnly: true,
+          agentId: "compass",
+          baseUrl: "https://clickclack-compass.example",
+          token: "",
+          workspace: "team",
+          discussions: { enabled: true },
+        },
+        ordinary: {
+          enabled: true,
+          baseUrl: "https://clickclack-ordinary.example",
+          token: "ordinary-token",
+          workspace: "team",
+          discussions: { enabled: true },
+        },
+      },
+    };
+
+    await expect(harness.service.open("agent:compass:no-fallback")).resolves.toEqual({
+      state: "none",
+    });
+    expect(harness.createChannel).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unmatched managed-only discussion account unavailable", async () => {
+    const harness = createHarness({ label: "Unmatched managed account" });
+    harness.config.channels!.clickclack = {
+      accounts: {
+        compass: {
+          enabled: true,
+          managedOnly: true,
+          agentId: "compass",
+          baseUrl: "https://clickclack-compass.example",
+          token: "compass-token",
+          workspace: "team",
+          discussions: { enabled: true },
+        },
+      },
+    };
+
+    await expect(harness.service.open("agent:forge:unmatched")).resolves.toEqual({
+      state: "none",
+    });
+    expect(harness.createChannel).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed agent session key before creating a channel", async () => {
+    const harness = createHarness({ label: "Malformed session key" });
+
+    await expect(harness.service.info("agent::malformed")).rejects.toThrow(
+      "Malformed agent session key",
+    );
+    await expect(harness.service.open("agent::malformed")).rejects.toThrow(
+      "Malformed agent session key",
+    );
+    expect(harness.createChannel).not.toHaveBeenCalled();
+  });
+
   it("stops honoring an existing binding when a second discussion account is enabled", async () => {
     const harness = createHarness({ label: "Previously unambiguous" });
     const sessionKey = "agent:main:became-ambiguous";
