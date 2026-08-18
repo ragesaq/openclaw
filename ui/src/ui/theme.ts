@@ -1,5 +1,5 @@
 // Control UI module implements theme behavior.
-export type ThemeName = "claw" | "knot" | "dash" | "custom";
+export type ThemeName = "claw" | "knot" | "dash" | "graphite" | "custom";
 export type ThemeMode = "system" | "light" | "dark";
 export type ResolvedTheme =
   | "dark"
@@ -8,10 +8,12 @@ export type ResolvedTheme =
   | "openknot-light"
   | "dash"
   | "dash-light"
+  | "graphite"
+  | "graphite-light"
   | "custom"
   | "custom-light";
 
-export const VALID_THEME_NAMES = new Set<ThemeName>(["claw", "knot", "dash", "custom"]);
+export const VALID_THEME_NAMES = new Set<ThemeName>(["claw", "knot", "dash", "graphite", "custom"]);
 const VALID_THEME_MODES = new Set<ThemeMode>(["system", "light", "dark"]);
 
 type ThemeSelection = { theme: ThemeName; mode: ThemeMode };
@@ -75,6 +77,9 @@ export function resolveTheme(theme: ThemeName, mode: ThemeMode): ResolvedTheme {
   }
   if (theme === "dash") {
     return resolvedMode === "light" ? "dash-light" : "dash";
+  }
+  if (theme === "graphite") {
+    return resolvedMode === "light" ? "graphite-light" : "graphite";
   }
   return resolvedMode === "light" ? "custom-light" : "custom";
 }

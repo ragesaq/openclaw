@@ -1135,6 +1135,22 @@ describe("config view", () => {
     expect(onOpenCustomThemeImport).toHaveBeenCalledTimes(1);
   });
 
+  it("shows Graphite as a built-in theme", () => {
+    const setTheme = vi.fn();
+    const { container } = renderConfigView({
+      activeSection: "__appearance__",
+      includeSections: ["__appearance__"],
+      setTheme,
+    });
+
+    const graphiteButton = findButtonByText(container, "Graphite");
+    expect(graphiteButton.title).toBe("Layered charcoal & indigo");
+
+    graphiteButton.click();
+
+    expect(setTheme).toHaveBeenCalledWith("graphite", { element: graphiteButton });
+  });
+
   it("shows the tweakcn importer once the custom slot is opened", () => {
     const { container } = renderConfigView({
       activeSection: "__appearance__",

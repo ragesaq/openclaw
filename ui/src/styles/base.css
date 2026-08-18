@@ -483,6 +483,139 @@
   --grid-line: rgba(80, 50, 20, 0.04);
 }
 
+:root[data-theme="graphite"] {
+  /*
+   * ClickGlass Graphite: layered charcoal with a restrained indigo signal.
+   *
+   * WCAG 2.1 AA audit (bg = #131419):
+   *   --accent #6f7eff on bg: 5.35:1 AA text
+   *   --primary-foreground #0d1020 on #6f7eff: 5.49:1 AA
+   *   --text #e7e9ee on bg: 15.14:1, --muted #8a8f9c: 5.68:1
+   */
+  --ring: #6f7eff;
+  --accent: #6f7eff;
+  --accent-hover: #8894ff;
+  --accent-muted: #6f7eff;
+  --accent-subtle: rgba(111, 126, 255, 0.14);
+  --accent-foreground: #0d1020;
+  --accent-glow: rgba(111, 126, 255, 0.2);
+  --selection-bg: #5666ee;
+  --selection-fg: #ffffff;
+  --primary: #6f7eff;
+  --primary-foreground: #0d1020;
+
+  --focus: rgba(111, 126, 255, 0.18);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 78%, transparent);
+  --focus-glow: 0 0 0 2px var(--bg), 0 0 0 3px var(--ring), 0 0 16px var(--accent-glow);
+
+  --bg: #131419;
+  --bg-accent: #1a1b22;
+  --bg-elevated: #20222b;
+  --bg-hover: #272a35;
+  --bg-muted: #272a35;
+
+  --card: #1a1b22;
+  --card-foreground: #e7e9ee;
+  --card-highlight: rgba(255, 255, 255, 0.04);
+  --popover: #20222b;
+  --popover-foreground: #e7e9ee;
+
+  --panel: #0d0e12;
+  --panel-strong: #1a1b22;
+  --panel-hover: #20222b;
+  --chrome: rgba(13, 14, 18, 0.96);
+  --chrome-strong: rgba(13, 14, 18, 0.98);
+
+  --text: #e7e9ee;
+  --text-strong: #ffffff;
+  --chat-text: #e7e9ee;
+  --muted: #8a8f9c;
+  --muted-strong: #a5aab5;
+  --muted-foreground: #8a8f9c;
+
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.18);
+  --input: rgba(255, 255, 255, 0.09);
+
+  --secondary: #20222b;
+  --secondary-foreground: #e7e9ee;
+  --accent-2: #5666ee;
+  --accent-2-muted: rgba(86, 102, 238, 0.7);
+  --accent-2-subtle: rgba(86, 102, 238, 0.12);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.62);
+
+  --grid-line: rgba(255, 255, 255, 0.03);
+}
+
+:root[data-theme="graphite-light"] {
+  /* The ClickGlass neutral hierarchy in light mode. The source accent is
+     darkened slightly so accent-colored labels clear WCAG AA on #e9ebef. */
+  --ring: #4f5dcc;
+  --accent: #4f5dcc;
+  --accent-hover: #4351c4;
+  --accent-muted: #4f5dcc;
+  --accent-subtle: rgba(79, 93, 204, 0.12);
+  --accent-foreground: #ffffff;
+  --accent-glow: rgba(79, 93, 204, 0.14);
+  --selection-bg: #4351c4;
+  --selection-fg: #ffffff;
+  --primary: #4f5dcc;
+  --primary-foreground: #ffffff;
+
+  --focus: rgba(79, 93, 204, 0.15);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 70%, transparent);
+  --focus-glow: 0 0 0 2px var(--bg), 0 0 0 3px var(--ring), 0 0 12px var(--accent-glow);
+
+  --bg: #e9ebef;
+  --bg-accent: #e1e4e9;
+  --bg-elevated: #f4f5f7;
+  --bg-hover: #d5d9e0;
+  --bg-muted: #d5d9e0;
+  --bg-content: #e1e4e9;
+
+  --card: #f4f5f7;
+  --card-foreground: #2b2e35;
+  --card-highlight: rgba(17, 19, 24, 0.025);
+  --popover: #f4f5f7;
+  --popover-foreground: #2b2e35;
+
+  --panel: #dde0e5;
+  --panel-strong: #e1e4e9;
+  --panel-hover: #d5d9e0;
+  --chrome: rgba(221, 224, 229, 0.96);
+  --chrome-strong: rgba(221, 224, 229, 0.98);
+
+  --text: #2b2e35;
+  --text-strong: #111318;
+  --chat-text: #2b2e35;
+  --muted: #646974;
+  --muted-strong: #4d525c;
+  --muted-foreground: #646974;
+
+  --border: rgba(17, 19, 24, 0.09);
+  --border-strong: rgba(17, 19, 24, 0.16);
+  --border-hover: rgba(17, 19, 24, 0.24);
+  --input: rgba(17, 19, 24, 0.11);
+
+  --secondary: #e1e4e9;
+  --secondary-foreground: #2b2e35;
+  --accent-2: #626dbc;
+  --accent-2-muted: rgba(98, 109, 188, 0.75);
+  --accent-2-subtle: rgba(98, 109, 188, 0.1);
+
+  --shadow-sm: 0 1px 2px rgba(17, 19, 24, 0.05);
+  --shadow-md: 0 4px 12px rgba(17, 19, 24, 0.08);
+  --shadow-lg: 0 12px 28px rgba(17, 19, 24, 0.11);
+  --shadow-xl: 0 24px 48px rgba(17, 19, 24, 0.14);
+
+  --grid-line: rgba(17, 19, 24, 0.04);
+}
+
 * {
   box-sizing: border-box;
 }

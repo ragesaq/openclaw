@@ -456,6 +456,18 @@ describe("renderQuickSettings", () => {
     ).toBe(true);
   });
 
+  it("applies Graphite from quick settings", () => {
+    const setTheme = vi.fn();
+    const container = document.createElement("div");
+
+    render(renderQuickSettings(createProps({ setTheme })), container);
+
+    const graphiteButton = expectButtonByText(container, "Graphite");
+    graphiteButton.click();
+
+    expect(setTheme).toHaveBeenCalledWith("graphite", { element: graphiteButton });
+  });
+
   it("routes custom clicks into the tweakcn importer until a custom theme exists", () => {
     const setTheme = vi.fn();
     const onOpenCustomThemeImport = vi.fn();

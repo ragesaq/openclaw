@@ -6,6 +6,8 @@ describe("resolveTheme", () => {
   it("resolves named theme families when mode is provided", () => {
     expect(resolveTheme("knot", "dark")).toBe("openknot");
     expect(resolveTheme("dash", "light")).toBe("dash-light");
+    expect(resolveTheme("graphite", "dark")).toBe("graphite");
+    expect(resolveTheme("graphite", "light")).toBe("graphite-light");
   });
 
   it("uses system preference when mode is system", () => {
@@ -32,6 +34,10 @@ describe("parseThemeSelection", () => {
     expect(parseThemeSelection("fieldmanual", undefined)).toEqual({
       theme: "dash",
       mode: "dark",
+    });
+    expect(parseThemeSelection("graphite", "light")).toEqual({
+      theme: "graphite",
+      mode: "light",
     });
   });
 });
