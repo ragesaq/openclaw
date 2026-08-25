@@ -564,6 +564,9 @@ export const streamOpenAICompletions: StreamFunction<
             const toolCallDeltas = normalizedDelta.toolCalls;
             if (toolCallDeltas.length > 0) {
               flushPartitionedContent();
+              // Tool-call deltas begin a new content lane. Close the open text
+              // block so later narration cannot be appended before this call.
+              finishTextBlock();
               // The tool-call lane is also a reasoning boundary; seal the thought
               // before toolcall_start so thinking_end never trails the action.
               sealNativeReasoningBeforeText();

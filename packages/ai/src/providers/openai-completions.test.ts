@@ -1728,6 +1728,70 @@ describe("openai-completions stop-reason tool-call guard", () => {
     expect(result.content[1]).toMatchObject({ type: "toolCall", id: "call_1", name: "bash" });
   });
 
+  it("keeps interleaved text chronologically across multiple tool calls", async () => {
+    mockChunksRef.chunks = [
+      makeTextChunk("First, checking A."),
+      makeToolCallChunk("call_1", "first", '{"value":1}'),
+      makeTextChunk("Now checking B."),
+      {
+        id: "chatcmpl-test",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 1,
+                  id: "call_2",
+                  function: { name: "second", arguments: '{"value":2}' },
+                  type: "function",
+                },
+              ],
+            },
+          },
+        ],
+      },
+      makeFinishChunk("tool_calls"),
+    ];
+
+    const stream = streamOpenAICompletions(model, context, {
+      apiKey: "sk-test",
+    });
+    const events: Array<{ type: string; contentIndex?: number }> = [];
+    for await (const event of stream as AsyncIterable<{ type: string; contentIndex?: number }>) {
+      if (
+        event.type === "text_start" ||
+        event.type === "toolcall_start" ||
+        event.type === "text_end" ||
+        event.type === "toolcall_end"
+      ) {
+        events.push({ type: event.type, contentIndex: event.contentIndex });
+      }
+    }
+    const result = await stream.result();
+
+    expect(result.content.map((block) => block.type)).toEqual([
+      "text",
+      "toolCall",
+      "text",
+      "toolCall",
+    ]);
+    expect(result.content[0]).toMatchObject({ type: "text", text: "First, checking A." });
+    expect(result.content[1]).toMatchObject({ type: "toolCall", id: "call_1", name: "first" });
+    expect(result.content[2]).toMatchObject({ type: "text", text: "Now checking B." });
+    expect(result.content[3]).toMatchObject({ type: "toolCall", id: "call_2", name: "second" });
+    expect(events).toEqual([
+      { type: "text_start", contentIndex: 0 },
+      { type: "text_end", contentIndex: 0 },
+      { type: "toolcall_start", contentIndex: 1 },
+      { type: "text_start", contentIndex: 2 },
+      { type: "text_end", contentIndex: 2 },
+      { type: "toolcall_start", contentIndex: 3 },
+      { type: "toolcall_end", contentIndex: 1 },
+      { type: "toolcall_end", contentIndex: 3 },
+    ]);
+  });
+
   it("strips toolCall blocks when finish_reason is length but tool_calls were accumulated", async () => {
     mockChunksRef.chunks = [
       makeToolCallChunk("call_1", "bash", '{"cmd":"ls"}'),
