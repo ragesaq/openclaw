@@ -85,6 +85,14 @@ const openAiModel = {
   maxTokens: 4096,
 } satisfies Model<"openai-completions">;
 
+const openCodeGoModel = {
+  ...openAiModel,
+  id: "gpt-5.6-luna",
+  name: "GPT-5.6 Luna",
+  provider: "opencode-go",
+  baseUrl: "https://opencode.ai/zen/go/v1",
+} satisfies Model<"openai-completions">;
+
 const openRouterModel = {
   ...openAiModel,
   id: "openrouter/minimax/minimax-m2.7",
@@ -188,6 +196,32 @@ function makeOpenAiChunk(
     choices: [{ index: 0, delta, finish_reason: finishReason }],
   };
 }
+
+const openAiInterleavedToolCallChunks = [
+  makeOpenAiChunk({ content: "Checking A." }),
+  makeOpenAiChunk({
+    tool_calls: [
+      {
+        index: 0,
+        id: "call_a",
+        type: "function",
+        function: { name: "lookup", arguments: '{"query":"a"}' },
+      },
+    ],
+  }),
+  makeOpenAiChunk({ content: "Checking B." }),
+  makeOpenAiChunk({
+    tool_calls: [
+      {
+        index: 1,
+        id: "call_b",
+        type: "function",
+        function: { name: "lookup", arguments: '{"query":"b"}' },
+      },
+    ],
+  }),
+  makeOpenAiChunk({}, "tool_calls"),
+] satisfies OpenAIChunk[];
 
 const openAiInterleavedReasoningChunks = [
   makeOpenAiChunk({ reasoning_content: "First thought." }),
@@ -528,6 +562,48 @@ describe("provider and transport observable parity fixtures", () => {
     ).toMatchFileSnapshot(
       path.join(import.meta.dirname, "../test/fixtures/provider-transport-parity", snapshot),
     );
+  });
+
+  it("preserves OpenCode Go native Completions text and tool lanes", async () => {
+    for (const implementation of ["provider", "transport"] as const) {
+      const result = await runOpenAi(
+        implementation,
+        "success",
+        openAiInterleavedToolCallChunks,
+        false,
+        openCodeGoModel,
+      );
+      const content = result.terminal.content as Array<Record<string, unknown>>;
+
+      expect(result.terminal.stopReason).toBe("toolUse");
+      expect(content).toHaveLength(4);
+      expect(content.map((block) => block.type)).toEqual(["text", "toolCall", "text", "toolCall"]);
+      expect(content).toMatchObject([
+        {
+          type: "text",
+          text: "Checking A.",
+          textSignature: expect.stringContaining('"phase":"commentary"'),
+        },
+        { type: "toolCall", id: "call_a", name: "lookup", arguments: { query: "a" } },
+        {
+          type: "text",
+          text: "Checking B.",
+          textSignature: expect.stringContaining('"phase":"commentary"'),
+        },
+        { type: "toolCall", id: "call_b", name: "lookup", arguments: { query: "b" } },
+      ]);
+
+      const laneStarts = result.eventTrace.filter((event) => {
+        const type = (event as { type?: unknown }).type;
+        return type === "text_start" || type === "toolcall_start";
+      });
+      expect(laneStarts).toEqual([
+        { type: "text_start", contentIndex: 0 },
+        { type: "toolcall_start", contentIndex: 1 },
+        { type: "text_start", contentIndex: 2 },
+        { type: "toolcall_start", contentIndex: 3 },
+      ]);
+    }
   });
 
   it("marks content interrupted by native reasoning as commentary", async () => {
