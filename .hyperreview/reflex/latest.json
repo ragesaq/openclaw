@@ -1,0 +1,24 @@
+{
+  "client": "codex",
+  "createdAt": "2026-08-25T04:57:37+00:00",
+  "decision": "pass",
+  "familyRelation": "self",
+  "head": "928fdbb0850540289bd77d437797a33122b5abd2",
+  "mode": "patch",
+  "model": "openai/gpt-5.6-luna",
+  "pathsSha256": "6d1dc49f074444c3cc8bf320d03291f74e877ec47985a3cec09da623d1cf4ab6",
+  "reason": "Low-churn test-only parity coverage for the existing generic OpenAI Completions normalization fix. The focused provider and managed-transport suites pass, and the diff adds no production code or provider-specific branch.",
+  "repo": "openclaw-ox-phase-normalization",
+  "requiresRobustArtifact": false,
+  "routedTo": [
+    "none"
+  ],
+  "schemaVersion": "hyperreview-reflex-decision/v1",
+  "skillVersion": "0.3.5",
+  "stagedPaths": [
+    "packages/ai/src/provider-transport-parity.test.ts"
+  ],
+  "stagedTree": "0a4fee679aa67ed27ce08b2fbf686ecd98704fd6",
+  "thinking": "xhigh",
+  "tier": "light"
+}
